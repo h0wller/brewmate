@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { btSupported, connectScale, hex } from './bt/bt'
-import { parseFutula, unitCmd } from './bt/futula'
+import { fdCmd, parseFutula, unitCmd } from './bt/futula'
 
 export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const [on, setOn] = useState(false)
@@ -75,7 +75,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
         </button>
         {on && (
           <>
-            <button className="chip" onClick={() => send([0xf3, 0x00], 'tare (весы)')}>Tare (весы)</button>
+            <button className="chip" onClick={() => send(fdCmd(0x32), 'tare (весы)')}>Tare (весы)</button>
             <button className="chip" onClick={() => setOffset(raw ?? 0)}>Tare (сайт)</button>
             <button className="chip" onClick={() => send(unitCmd(0x04), 'unit')}>г</button>
             <button className="chip" onClick={() => send(unitCmd(0x07), 'unit')}>мл</button>
