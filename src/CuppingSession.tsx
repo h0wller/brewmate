@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import type { CuppingLot, CuppingSession, Defect, QualityAttr } from './types'
-import { CUP_ATTRS, QUALITY_ATTRS, defectPoints, q, scaScore } from './cupping/sca'
+import type { CuppingLot, CuppingSession, Defect } from './types'
+import {
+  COE_ATTRS, CUP_ATTRS, QUALITY_ATTRS,
+  defectPoints, q, scoreFor,
+} from './cupping/sca'
 import { uid } from './storage'
 
 export function CuppingSessionView({ session, onChange, onBack }: {
@@ -8,6 +11,14 @@ export function CuppingSessionView({ session, onChange, onBack }: {
   onChange: (s: CuppingSession) => void
   onBack: () => void
 }) {
+  const isCoe = session.form === 'coe'
+  const attrs = isCoe ? COE_ATTRS : QUALITY_ATTRS
+  const step = isCoe ? 0.5 : 0.25
+  const minQ = isCoe ? 0 : 6
+  const maxQ = isCoe ? 90 : 70
+  const maxCups = isCoe ? 10 : 30
+  const cupAttrs = isCoe ? CUP_ATTRS.filter(c => c.key === 'uniformity') : CUP_ATTRS
+
   const [lotId, setLotId] = useState(session.lots[0].id)
   const lot = session.lots.find(l => l.id === lotId) ?? session.lots[0]
   if (!lot) return null
@@ -15,10 +26,10 @@ export function CuppingSessionView({ session, onChange, onBack }: {
   const update = (patch: Partial<CuppingLot>) =>
     onChange({ ...session, lots: session.lots.map(l => l.id === lot.id ? { ...l, ...patch } : l) })
 
-  const s = scaScore(lot)
+  const s = scoreFor(session.form, lot)
 
-  const setQ = (k: QualityAttr, v: number) =>
-    update({ quality: { ...lot.quality, [k]: Math.min(10, Math.max(6, v)) } })
+  const setQ = (k: string, v: number) =>
+    update({ quality: { ...lot.quality, [k]: Math.min(10, Math.max(minQ, v)) } })
 
   const toggleCup = (k: 'sweetness' | 'uniformity' | 'clean', i: number) => {
     const arr = [...lot.cups[k]]
@@ -32,34 +43,34 @@ export function CuppingSessionView({ session, onChange, onBack }: {
   return (
     <div>
       <button className="back" onClick={onBack}>← Каппинги</button>
-      <h1>{session.title}</h1>
+      <h1>{session.title} <span className="meta">· {session.form.toUpperCase()}</span></h1>
 
       <div className="lotChips">
         {session.lots.map(l => (
           <button key={l.id} className={'chip' + (l.id === lot.id ? ' on' : '')} onClick={() => setLotId(l.id)}>
-            {l.name} · {q(scaScore(l).total)}
+            {l.name} · {q(scoreFor(session.form, l).total)}
           </button>
         ))}
       </div>
 
       <div className="scoreBig">{q(s.total)}</div>
       <div className="small" style={{ textAlign: 'center', margin: '0 0 12px' }}>
-        качество {q(s.quality)}/70 · чашки {q(s.cups)}/30 · дефекты −{q(s.defects)}
+        качество {q(s.quality)}/{maxQ} · чашки {q(s.cups)}/{maxCups} · дефекты −{q(s.defects)}
       </div>
 
-      {QUALITY_ATTRS.map(a => (
+      {attrs.map(a => (
         <div className="attrRow" key={a.key}>
           <span className="lbl">{a.label}</span>
           <div className="stepper">
-            <button onClick={() => setQ(a.key, lot.quality[a.key] - 0.25)}>−</button>
-            <span className="val">{q(lot.quality[a.key])}</span>
-            <button onClick={() => setQ(a.key, lot.quality[a.key] + 0.25)}>+</button>
+            <button onClick={() => setQ(a.key, (lot.quality[a.key] ?? minQ) - step)}>−</button>
+            <span className="val">{q(lot.quality[a.key] ?? minQ)}</span>
+            <button onClick={() => setQ(a.key, (lot.quality[a.key] ?? minQ) + step)}>+</button>
           </div>
         </div>
       ))}
 
       <div className="small">По чашкам · 2 балла за чашку</div>
-      {CUP_ATTRS.map(c => (
+      {cupAttrs.map(c => (
         <div className="attrRow" key={c.key}>
           <span className="lbl">{c.label}</span>
           <div className="cups">

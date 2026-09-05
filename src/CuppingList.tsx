@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CuppingSession } from './types'
-import { emptyLot, q, scaScore } from './cupping/sca'
+import { emptyLot, q, scoreFor } from './cupping/sca'
 import { uid } from './storage'
 
 export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
@@ -12,12 +12,13 @@ export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
   const [n, setN] = useState(2)
+  const [form, setForm] = useState<'sca' | 'coe'>('sca')
 
   const create = () => {
     onCreate({
       id: uid(),
       title: title.trim() || `Каппинг ${new Date().toLocaleDateString('ru-RU')}`,
-      form: 'sca',
+      form,
       createdAt: Date.now(),
       lots: Array.from({ length: n }, (_, i) => emptyLot(`Лот ${i + 1}`)),
     })
@@ -47,17 +48,24 @@ export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
               <button onClick={() => setN(v => Math.min(8, v + 1))}>+</button>
             </div>
           </div>
-          <button className="btn" onClick={create}>Создать (SCA)</button>
+          <div className="row">
+            <label>Форма</label>
+            <button className={'chip' + (form === 'sca' ? ' on' : '')} onClick={() => setForm('sca')}>SCA</button>
+            <button className={'chip' + (form === 'coe' ? ' on' : '')} onClick={() => setForm('coe')}>CoE</button>
+          </div>
+          <button className="btn" onClick={create}>Создать</button>
         </div>
       )}
 
       {sessions.map(s => {
-        const best = Math.max(...s.lots.map(l => scaScore(l).total))
+        const best = Math.max(...s.lots.map(l => scoreFor(s.form, l).total))
         return (
           <div className="card" key={s.id} onClick={() => onOpen(s.id)}>
             <div className="grow">
               <div>{s.title}</div>
-              <div className="meta">{s.lots.length} лот. · лучший балл {q(best)}</div>
+              <div className="meta">
+                {s.form.toUpperCase()} · {s.lots.length} лот. · лучший балл {q(best)}
+              </div>
             </div>
             <button className="x" onClick={e => { e.stopPropagation(); onDelete(s.id) }}>×</button>
           </div>
@@ -65,7 +73,6 @@ export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
       })}
 
       {sessions.length === 0 && !creating && <div className="small">Нет сессий — создай первую 🧪</div>}
-      <div className="small">Форма CoE — скоро 🚧</div>
     </div>
   )
 }

@@ -13,9 +13,6 @@ export interface BeanProfile {
 }
 
 /* ---------- Каппинг ---------- */
-export type QualityAttr =
-  | 'aroma' | 'flavor' | 'aftertaste' | 'acidity' | 'body' | 'balance' | 'overall'
-
 export interface Defect {
   id: string
   type: 'taint' | 'fault'
@@ -26,8 +23,8 @@ export interface Defect {
 export interface CuppingLot {
   id: string
   name: string
-  quality: Record<QualityAttr, number>            // 6–10, шаг 0.25
-  cups: { sweetness: boolean[]; uniformity: boolean[]; clean: boolean[] } // 5 чашек
+  quality: Record<string, number> // ключи атрибутов SCA/CoE, см. sca.ts
+  cups: { sweetness: boolean[]; uniformity: boolean[]; clean: boolean[] }
   defects: Defect[]
   notes?: string
 }
