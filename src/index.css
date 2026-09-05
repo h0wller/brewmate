@@ -143,3 +143,5 @@ textarea {
 .recBig { display: flex; justify-content: space-around; text-align: center; margin: 6px 0 10px; }
 .recVal { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .tip { color: #98989f; font-size: 13px; margin: 4px 0; }
+
+.btn:disabled { opacity: .4; }

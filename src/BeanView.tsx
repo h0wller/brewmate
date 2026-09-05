@@ -1,9 +1,33 @@
 import { useRef, useState } from 'react'
-import type { BeanProfile, Recipe } from './types'
+import type { BeanProfile, BrewStep, Recipe } from './types'
 import {
   LEVEL_LABEL, METHODS, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
 import type { MethodKey, RoastLevel } from './beans/engine'
+import { askVision, buildPackagePrompt, fileToBase64, loadAIConfig } from './ai/client'
+import type { AIConfig } from './ai/client'
+import { AISettings } from './AISettings'
+import { uid } from './storage'
+
+const sanitizeSteps = (raw: any): BrewStep[] => {
+  const arr = Array.isArray(raw) ? raw : []
+  const steps = arr
+    .map((s: any) => ({ duration: +s?.duration || 0, pourTo: +s?.pourTo || 0, note: String(s?.note ?? '') }))
+    .filter((s: BrewStep) => s.duration > 0 && s.pourTo > 0)
+  return steps.length
+    ? steps
+    : [{ duration: 45, pourTo: 45, note: 'блюм' }, { duration: 60, pourTo: 240, note: 'долить' }]
+}
+
+const pickBean = (b: any, base: BeanProfile): BeanProfile => ({
+  ...base,
+  name: typeof b?.name === 'string' && b.name ? b.name : base.name,
+  origin: typeof b?.origin === 'string' ? b.origin : base.origin,
+  process: typeof b?.process === 'string' ? b.process : base.process,
+  roastLevel: ['light', 'medium', 'dark'].includes(b?.roastLevel) ? b.roastLevel as RoastLevel : base.roastLevel,
+  roastDate: typeof b?.roastDate === 'string' ? b.roastDate : base.roastDate,
+  notes: typeof b?.notes === 'string' && b.notes ? b.notes : base.notes,
+})
 
 export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
   bean: BeanProfile
@@ -13,8 +37,12 @@ export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
 }) {
   const [method, setMethod] = useState<MethodKey>('v60')
   const [busy, setBusy] = useState(false)
+  const [busyAI, setBusyAI] = useState(false)
   const [err, setErr] = useState('')
+  const [aiCfg, setAiCfg] = useState<AIConfig | null>(loadAIConfig)
+  const [showSettings, setShowSettings] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const pkgRef = useRef<HTMLInputElement>(null)
 
   const set = (p: Partial<BeanProfile>) => onChange({ ...bean, ...p })
   const rec = recommend(bean, method)
@@ -27,6 +55,30 @@ export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
       set({ agtron: res.agtron, roastLevel: res.level, photoColor: res.color })
     } catch (e) { setErr((e as Error).message) }
     setBusy(false)
+  }
+
+  const onPackage = async (f: File) => {
+    if (!aiCfg) return
+    setBusyAI(true); setErr('')
+    try {
+      const img = await fileToBase64(f)
+      const out = await askVision(aiCfg, img, buildPackagePrompt(METHODS[method].label))
+      const nb = pickBean(out.bean, bean)
+      onChange(nb)
+      const r = out.recipe ?? {}
+      onMakeRecipe({
+        id: uid(),
+        title: r.title || `${nb.name || 'Зерно'} · AI · ${METHODS[method].label}`,
+        method,
+        doseG: 15,
+        waterG: Math.round(15 * (+r.ratio || rec.ratio)),
+        tempC: Math.max(85, Math.min(98, +r.tempC || rec.temp)),
+        grind: typeof r.grind === 'string' ? r.grind : `Comandante ${rec.clicks} кликов`,
+        steps: sanitizeSteps(r.steps),
+        createdAt: Date.now(),
+      })
+    } catch (e) { setErr((e as Error).message) }
+    setBusyAI(false)
   }
 
   return (
@@ -52,15 +104,12 @@ export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
       {days !== null && <div className="small">Обжарке: {days} дн.</div>}
 
       <div className="card" style={{ display: 'block', cursor: 'default' }}>
-        <div className="small" style={{ margin: '0 0 8px' }}>
-          Фото зерна — на белом фоне при дневном свете
-        </div>
+        <div className="small" style={{ margin: '0 0 8px' }}>Фото зерна — на белом фоне при дневном свете</div>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden
           onChange={e => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.currentTarget.value = '' }} />
         <button className="btn secondary" onClick={() => fileRef.current?.click()}>
           {busy ? 'Анализирую…' : '📷 Сфоткать зерно'}
         </button>
-        {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
         {bean.agtron !== undefined && (
           <div className="row" style={{ marginTop: 10 }}>
             {bean.photoColor && <span className="swatch" style={{ background: bean.photoColor }} />}
@@ -75,6 +124,29 @@ export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
           ))}
         </div>
       </div>
+
+      <div className="small">AI</div>
+      {showSettings ? (
+        <AISettings
+          initial={aiCfg}
+          onDone={c => { setAiCfg(c); setShowSettings(false) }}
+          onCancel={() => setShowSettings(false)}
+        />
+      ) : (
+        <div className="card" style={{ display: 'block', cursor: 'default' }}>
+          <input ref={pkgRef} type="file" accept="image/*" capture="environment" hidden
+            onChange={e => { const f = e.target.files?.[0]; if (f) onPackage(f); e.currentTarget.value = '' }} />
+          <button className="btn" onClick={() => aiCfg ? pkgRef.current?.click() : setShowSettings(true)}>
+            {busyAI ? '🤖 Думаю…' : '🤖 Сфоткать пачку → AI-рецепт'}
+          </button>
+          <div className="small" style={{ margin: '8px 0 0' }}>
+            {aiCfg ? `${aiCfg.provider} · ${aiCfg.model}` : 'AI не настроен'} ·{' '}
+            <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={() => setShowSettings(true)}>настроить</span>
+          </div>
+        </div>
+      )}
+
+      {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
 
       <div className="small">Метод</div>
       <div className="lotChips">
