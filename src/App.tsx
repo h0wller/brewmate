@@ -10,10 +10,16 @@ import { CuppingList } from './CuppingList'
 import { CuppingSessionView } from './CuppingSession'
 import { BeansList } from './BeansList'
 import { BeanView } from './BeanView'
+import { SyncSettings } from './SyncSettings'
+import { loadSyncConfig } from './sync/sync'
 
-type BrewView = { name: 'list' } | { name: 'timer'; id: string } | { name: 'edit'; id?: string }
+type BrewView =
+  | { name: 'list' }
+  | { name: 'timer'; id: string }
+  | { name: 'edit'; id?: string }
+  | { name: 'settings' }
 type CupView = { name: 'list' } | { name: 'session'; id: string }
-type BeanViewNav = { name: 'list' } | { name: 'detail'; id: string }
+type BeanNav = { name: 'list' } | { name: 'detail'; id: string }
 
 export default function App() {
   const [tab, setTab] = useState<'brew' | 'bean' | 'cup'>('brew')
@@ -27,7 +33,7 @@ export default function App() {
   useEffect(() => saveSessions(sessions), [sessions])
 
   const [beans, setBeans] = useState<BeanProfile[]>(loadBeans)
-  const [beanNav, setBeanNav] = useState<BeanViewNav>({ name: 'list' })
+  const [beanNav, setBeanNav] = useState<BeanNav>({ name: 'list' })
   useEffect(() => saveBeans(beans), [beans])
 
   const upsertRecipe = (r: Recipe) => {
@@ -40,6 +46,15 @@ export default function App() {
   }
 
   const brewContent = () => {
+    /* ⚙️ Синхронизация — отдельный экран внутри таба «Заваривание» */
+    if (brew.name === 'settings') return (
+      <SyncSettings
+        initial={loadSyncConfig()}
+        local={{ recipes, sessions, beans }}
+        onMerged={d => { setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans) }}
+        onClose={() => setBrew({ name: 'list' })}
+      />
+    )
     if (brew.name === 'timer') {
       const r = recipes.find(x => x.id === brew.id)
       return r ? (
@@ -62,8 +77,12 @@ export default function App() {
       <div>
         <div className="header">
           <h1>BrewMate ☕</h1>
-          <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 18px' }}
-            onClick={() => setBrew({ name: 'edit' })}>+</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 14px' }}
+              onClick={() => setBrew({ name: 'settings' })}>⚙️</button>
+            <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 18px' }}
+              onClick={() => setBrew({ name: 'edit' })}>+</button>
+          </div>
         </div>
         {recipes.length === 0 && <div className="small">Пока пусто — создай первый рецепт ☕️</div>}
         {recipes.map(r => (
