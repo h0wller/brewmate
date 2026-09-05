@@ -145,3 +145,10 @@ textarea {
 .tip { color: #98989f; font-size: 13px; margin: 4px 0; }
 
 .btn:disabled { opacity: .4; }
+
+/* ---------- BT ---------- */
+.rawLog {
+  background: #101013; border-radius: 12px; padding: 10px;
+  font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-height: 180px; overflow: auto; color: #9ff59f; word-break: break-all;
+}

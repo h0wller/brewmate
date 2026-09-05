@@ -1,5 +1,6 @@
 import type { Recipe } from './types'
 import { fmt, useBrewTimer } from './useBrewTimer'
+import { ScaleChip } from './ScaleChip'
 
 export function BrewTimer({ recipe }: { recipe: Recipe }) {
   const { status, elapsed, total, stepIndex, start, pause, resume, reset } =
@@ -25,7 +26,7 @@ export function BrewTimer({ recipe }: { recipe: Recipe }) {
           }}
         />
       </div>
-
+          <ScaleChip />
       {status !== 'idle' && cur && (
         <div className="now">
           <div className="note">{cur.note || `Шаг ${cur.i + 1}`}</div>
