@@ -1,6 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { btSupported, connectScale, hex } from './bt/bt'
-import { parseFutula, unitCmd } from './bt/futula'
+import { fdCmd, parseFutula, unitCmd } from './bt/futula'
+
+/* Кандидаты tare: сервисные команды из родного APK (bk/gj4/ik).
+   Раньше молчали из-за отсутствия handshake — теперь двери открыты.
+   Смотри на дисплей: "------" и 0 = нашли. */
+const TARE_HUNT: number[][] = [
+  [0xf2, 0x01],
+  [0xf2, 0x00],
+  [0xf3, 0x00],
+  [0xf5, 0x00],
+  [0xf9, 0x00],
+  [0x06, 0x11, 0x00, 0x00],
+  fdCmd(0x32),
+  fdCmd(0x01),
+  fdCmd(0x02),
+  fdCmd(0x05),
+  fdCmd(0x30),
+  fdCmd(0x31),
+  fdCmd(0x33),
+]
 
 export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const [on, setOn] = useState(false)
@@ -58,6 +77,15 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const net = raw === null ? null : raw - offset
   useEffect(() => { cbRef.current?.(net ?? 0) }, [net])
 
+  const tareHunt = async () => {
+    push('=== охота на tare: СМОТРИ НА ДИСПЛЕЙ (~30 сек) ===')
+    for (let i = 0; i < TARE_HUNT.length; i++) {
+      await send(TARE_HUNT[i], `hunt#${i}`)
+      await new Promise(r => setTimeout(r, 2000))
+    }
+    push('=== конец: на каком hunt# были "------" и 0? ===')
+  }
+
   const sendManual = () => {
     const bytes = cmdHex.trim().split(/[\s,]+/).filter(Boolean)
       .map(s => parseInt(s, 16)).filter(n => !isNaN(n) && n >= 0 && n <= 255)
@@ -73,7 +101,8 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
         </button>
         {on && (
           <>
-            <button className="chip" onClick={() => setOffset(raw ?? 0)}>Tare</button>
+            <button className="chip" onClick={() => setOffset(raw ?? 0)}>Tare (сайт)</button>
+            <button className="chip" onClick={tareHunt}>🔍 tare (весы)</button>
             <button className="chip" onClick={() => send(unitCmd(0x04), 'unit')}>г</button>
             <button className="chip" onClick={() => send(unitCmd(0x07), 'unit')}>мл</button>
             <button className="chip" onClick={() => setDebug(d => !d)}>
@@ -94,7 +123,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
         <>
           <div className="scaleRow" style={{ marginTop: 8 }}>
             <input value={cmdHex} onChange={e => setCmdHex(e.target.value)}
-              placeholder="hex, напр: fd 00 07 …" style={{ flex: 1 }} />
+              placeholder="hex, напр: f2 01" style={{ flex: 1 }} />
             <button className="chip" onClick={sendManual}>Отпр.</button>
           </div>
           <div className="rawLog">

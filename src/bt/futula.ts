@@ -1,10 +1,10 @@
 /* FUTULA / LFSmart Scale (протокол 20, реверс из родного APK)
    Пакет 11 байт: ca 02 06 WW WW NEG 00 00 U1 U2 CK
-   WW  — вес little-endian /10 (если byte1 != 0x01)
-   NEG — байт 5: != 0 → вес отрицательный (thanZero из ik.b)
+   NEG — байт 5: != 0 → вес отрицательный
    U1  — единицы: 0x04 г, 0x07 мл, 0x06 oz, 0x08 lb
-   U2  — байт 9: 0x00 = locked/стабильно, 0x01 = process
-   CK  — XOR первых 10 байт */
+   U2  — байт 9: 0x00 = стабильно, 0x01 = процесс
+   CK  — XOR первых 10 байт
+   Команды: ck = XOR ВСЕХ байтов команды (проверено на fd 00 07 … fa) */
 
 const UNIT_MAP: Record<number, string> = { 0x04: 'г', 0x07: 'мл', 0x06: 'oz', 0x08: 'lb' }
 
@@ -21,10 +21,12 @@ export function parseFutula(bytes: Uint8Array): { rawG: number; stable: boolean;
   return { rawG: neg ? -raw : raw, stable, unit }
 }
 
-/* Команда единиц из ik.h(): FD00 UU 00… + ck = XOR байтов [1..] */
-export function unitCmd(code: number): number[] {
-  const b = [0xfd, 0x00, code, 0, 0, 0, 0, 0, 0, 0]
-  let ck = 0
-  for (let i = 1; i < b.length; i++) ck ^= b[i]
-  return [...b, ck]
+const xorAll = (b: number[]) => b.reduce((a, x) => a ^ x, 0)
+
+/* FD-команда: FD TT 00… + ck (XOR всех) */
+export const fdCmd = (type: number): number[] => {
+  const b = [0xfd, type, 0, 0, 0, 0, 0, 0, 0, 0]
+  return [...b, xorAll(b)]
 }
+
+export const unitCmd = (code: number) => fdCmd(code) // FD 00 UU… — единицы из ik.h()
