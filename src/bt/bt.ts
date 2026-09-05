@@ -51,13 +51,7 @@ export async function connectScale(
   }
   return {
     name: device.name || 'scale',
-    tare: async () => {
-      if (!writeChar) return
-      try {
-        const { TARE_CMD } = await import('./futula')
-        await writeChar.writeValueWithResponse(TARE_CMD)
-      } catch {}
-    },
+    tare: () => {}, // теперь таром рулит ScaleChip через offset,
     disconnect: () => { try { device.gatt?.disconnect() } catch {} },
     writeChar,
   }
