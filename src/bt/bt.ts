@@ -2,6 +2,7 @@ export const btSupported = () => typeof (navigator as any).bluetooth !== 'undefi
 
 type DataHandler = (charUuid: string, bytes: Uint8Array) => void
 type InfoHandler = (line: string) => void
+type ConnectHandler = () => void
 
 export interface ScaleHandle {
   name: string
@@ -12,10 +13,11 @@ export interface ScaleHandle {
 export async function connectScale(
   onData: DataHandler,
   onInfo: InfoHandler,
+  onConnect: ConnectHandler,
 ): Promise<ScaleHandle> {
   const nav = navigator as any
   if (!nav.bluetooth) {
-    throw new Error('Web Bluetooth недоступен на этом устройстве (iOS). Нужен Android/Chrome.')
+    throw new Error('Web Bluetooth недоступен (iOS). Нужен Android/Chrome.')
   }
   const device = await nav.bluetooth.requestDevice({
     acceptAllDevices: true,
@@ -23,31 +25,48 @@ export async function connectScale(
   })
   onInfo(`device: ${device.name || '(без имени)'}`)
 
-  const server = await device.gatt!.connect()
-  const services = await server.getPrimaryServices()
   let writeChar: any = null
-  for (const s of services) {
-    onInfo(`service ${s.uuid}`)
-    let chars: any[] = []
-    try { chars = await s.getCharacteristics() } catch { continue }
-    for (const c of chars) {
-      const p = c.properties
-      const flags = [p.read && 'read', p.write && 'write', p.notify && 'notify', p.indicate && 'indicate']
-        .filter(Boolean).join('+')
-      onInfo(`  char ${c.uuid} [${flags}]`)
-      if (p.write || p.writeWithoutResponse) writeChar = c
-      if (p.notify || p.indicate) {
-        try {
-          await c.startNotifications()
-          onInfo(`  ✔ подписан: ${c.uuid}`)
-          c.addEventListener('characteristicvaluechanged', (e: any) => {
-            const v = e.target.value as DataView
-            onData(c.uuid, new Uint8Array(v.buffer, v.byteOffset, v.byteLength))
-          })
-        } catch { onInfo(`  ✖ notify не удался: ${c.uuid}`) }
+  let manual = false
+
+  const setup = async () => {
+    await device.gatt!.connect()
+    const services = await device.gatt!.getPrimaryServices()
+    writeChar = null
+    for (const s of services) {
+      let chars: any[] = []
+      try { chars = await s.getCharacteristics() } catch { continue }
+      for (const c of chars) {
+        const p = c.properties
+        if (p.write || p.writeWithoutResponse) writeChar = c
+        if (p.notify || p.indicate) {
+          try {
+            await c.startNotifications()
+            c.addEventListener('characteristicvaluechanged', (e: any) => {
+              const v = e.target.value as DataView
+              onData(c.uuid, new Uint8Array(v.buffer, v.byteOffset, v.byteLength))
+            })
+          } catch { /* ок */ }
+        }
       }
     }
   }
+
+  /* весы тарируются перезагрузкой и рвут связь — возвращаемся сами */
+  device.addEventListener('gattserverdisconnected', () => {
+    if (manual) return
+    onInfo('⚠️ весы перезагрузились — переподключаюсь…')
+    setTimeout(async () => {
+      try {
+        await setup()
+        onInfo('✔ переподключено')
+        onConnect()
+      } catch { onInfo('✖ переподключение не удалось') }
+    }, 2000)
+  })
+
+  await setup()
+  onConnect()
+
   return {
     name: device.name || 'scale',
     write: async (bytes: Uint8Array) => {
@@ -55,7 +74,7 @@ export async function connectScale(
       try { await writeChar.writeValueWithResponse(bytes) }
       catch { await writeChar.writeValueWithoutResponse(bytes) }
     },
-    disconnect: () => { try { device.gatt?.disconnect() } catch {} },
+    disconnect: () => { manual = true; try { device.gatt?.disconnect() } catch {} },
   }
 }
 
