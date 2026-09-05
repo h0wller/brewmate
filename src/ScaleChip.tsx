@@ -1,26 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { btSupported, connectScale, hex } from './bt/bt'
-import { parseFutula } from './bt/futula'
-
-const xorCk = (b: number[]) => b.reduce((a, x) => a ^ x, 0)
-const caCmd = (type: number, unit = 0x04) => {
-  const b = [0xca, 0x02, type, 0, 0, 0, 0, 0, unit, 0x01]
-  return [...b, xorCk(b)]
-}
-const TARE_CANDIDATES: number[][] = [
-  ...[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-      0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f].map(t => caCmd(t)),
-  [0x03, 0x0a, 0x01, 0, 0, 0, 0, 0x02, 0, 0, 0, 0x10],
-  [0x02, 0x01],
-  [0x05],
-]
-/* Диагностик: пытаемся переключить единицы в мл командой с телефона */
-const UNIT_TEST: number[][] = [
-  caCmd(0x02, 0x07),
-  caCmd(0x07, 0x07),
-  caCmd(0x04, 0x07),
-  caCmd(0x09, 0x07),
-]
+import { parseFutula, unitCmd } from './bt/futula'
 
 export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const [on, setOn] = useState(false)
@@ -37,6 +17,16 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   useEffect(() => { cbRef.current = onWeight }, [onWeight])
 
   const push = (line: string) => setLog(r => [...r.slice(-80), line])
+
+  const send = async (bytes: number[], label: string) => {
+    if (!handle.current?.write) return
+    try {
+      await handle.current.write(new Uint8Array(bytes))
+      push(`→ ${label}: ${bytes.map(x => x.toString(16).padStart(2, '0')).join(' ')}`)
+    } catch (e) {
+      push(`✖ ${label}: ${(e as Error).message}`)
+    }
+  }
 
   const connect = async () => {
     if (!btSupported()) { alert('Web Bluetooth недоступен (iOS).'); return }
@@ -56,7 +46,6 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
       setName(h.name)
       setOn(true)
       setOffset(0)
-            // handshake как в родном приложении
       setTimeout(() => send([0x06, 0x0f, 0x00, 0x00], 'handshake'), 600)
     } catch (e) { alert((e as Error).message) }
   }
@@ -68,34 +57,6 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
 
   const net = raw === null ? null : raw - offset
   useEffect(() => { cbRef.current?.(net ?? 0) }, [net])
-
-  const send = async (bytes: number[], label: string) => {
-    if (!handle.current?.write) return
-    try {
-      await handle.current.write(new Uint8Array(bytes))
-      push(`→ ${label}: ${bytes.map(x => x.toString(16).padStart(2, '0')).join(' ')}`)
-    } catch (e) {
-      push(`✖ ${label}: ${(e as Error).message}`)
-    }
-  }
-
-  const autoTare = async () => {
-    push('=== авто-подбор tare: СМОТРИ НА ДИСПЛЕЙ (~30 сек) ===')
-    for (let i = 0; i < TARE_CANDIDATES.length; i++) {
-      await send(TARE_CANDIDATES[i], `cand#${i}`)
-      await new Promise(r => setTimeout(r, 1500))
-    }
-    push('=== конец ===')
-  }
-
-  const unitTest = async () => {
-    push('=== тест write-канала: пытаюсь включить «мл» ===')
-    for (let i = 0; i < UNIT_TEST.length; i++) {
-      await send(UNIT_TEST[i], `ml#${i}`)
-      await new Promise(r => setTimeout(r, 1200))
-    }
-    push('=== если дисплей НЕ переключился в мл — write-канал мёртвый ===')
-  }
 
   const sendManual = () => {
     const bytes = cmdHex.trim().split(/[\s,]+/).filter(Boolean)
@@ -113,10 +74,9 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
         {on && (
           <>
             <button className="chip" onClick={() => setOffset(raw ?? 0)}>Tare</button>
-            <button className="chip" onClick={autoTare}>🔍 tare (весы)</button>
-            <button className="chip" onClick={unitTest}>🧪 мл-тест</button>
+            <button className="chip" onClick={() => send(unitCmd(0x04), 'unit')}>г</button>
+            <button className="chip" onClick={() => send(unitCmd(0x07), 'unit')}>мл</button>
             <button className="chip" onClick={() => setDebug(d => !d)}>
-            <button className="chip" onClick={() => push('=== 📌 МЕТКА ===')}>📌</button>
               {debug ? 'скрыть лог' : 'лог'}
             </button>
           </>
@@ -134,7 +94,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
         <>
           <div className="scaleRow" style={{ marginTop: 8 }}>
             <input value={cmdHex} onChange={e => setCmdHex(e.target.value)}
-              placeholder="hex, напр: ca 02 05 00 …" style={{ flex: 1 }} />
+              placeholder="hex, напр: fd 00 07 …" style={{ flex: 1 }} />
             <button className="chip" onClick={sendManual}>Отпр.</button>
           </div>
           <div className="rawLog">
