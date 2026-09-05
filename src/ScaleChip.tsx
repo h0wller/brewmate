@@ -56,6 +56,8 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
       setName(h.name)
       setOn(true)
       setOffset(0)
+            // handshake как в родном приложении
+      setTimeout(() => send([0x06, 0x0f, 0x00, 0x00], 'handshake'), 600)
     } catch (e) { alert((e as Error).message) }
   }
 
@@ -114,6 +116,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
             <button className="chip" onClick={autoTare}>🔍 tare (весы)</button>
             <button className="chip" onClick={unitTest}>🧪 мл-тест</button>
             <button className="chip" onClick={() => setDebug(d => !d)}>
+            <button className="chip" onClick={() => push('=== 📌 МЕТКА ===')}>📌</button>
               {debug ? 'скрыть лог' : 'лог'}
             </button>
           </>
