@@ -1,22 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { btSupported, connectScale, hex } from './bt/bt'
-import { fdCmd, parseFutula, unitCmd } from './bt/futula'
-
-/* Охота №2: команды, не долетевшие в прошлый раз из-за дисконнекта.
-   Смотри на дисплей: "------" и 0 = нашли tare. */
-const TARE_HUNT: number[][] = [
-  [0xf3, 0x00],
-  [0xf5, 0x00],
-  [0xf9, 0x00],
-  [0x06, 0x11, 0x00, 0x00],
-  fdCmd(0x32),
-  fdCmd(0x01),
-  fdCmd(0x02),
-  fdCmd(0x05),
-  fdCmd(0x30),
-  fdCmd(0x31),
-  fdCmd(0x33),
-]
+import { parseFutula, unitCmd } from './bt/futula'
 
 export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const [on, setOn] = useState(false)
@@ -76,15 +60,6 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const net = raw === null ? null : raw - offset
   useEffect(() => { cbRef.current?.(net ?? 0) }, [net])
 
-  const tareHunt = async () => {
-    push('=== охота №2: СМОТРИ НА ДИСПЛЕЙ (~25 сек) ===')
-    for (let i = 0; i < TARE_HUNT.length; i++) {
-      await send(TARE_HUNT[i], `hunt#${i}`)
-      await new Promise(r => setTimeout(r, 2000))
-    }
-    push('=== конец: на каком hunt# были "------"? ===')
-  }
-
   const sendManual = () => {
     const bytes = cmdHex.trim().split(/[\s,]+/).filter(Boolean)
       .map(s => parseInt(s, 16)).filter(n => !isNaN(n) && n <= 255)
@@ -100,7 +75,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
         </button>
         {on && (
           <>
-            <button className="chip" onClick={tareHunt}>🔍 tare (весы)</button>
+            <button className="chip" onClick={() => send([0xf3, 0x00], 'tare (весы)')}>Tare (весы)</button>
             <button className="chip" onClick={() => setOffset(raw ?? 0)}>Tare (сайт)</button>
             <button className="chip" onClick={() => send(unitCmd(0x04), 'unit')}>г</button>
             <button className="chip" onClick={() => send(unitCmd(0x07), 'unit')}>мл</button>
