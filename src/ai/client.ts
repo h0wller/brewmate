@@ -59,7 +59,8 @@ export async function askVision(cfg: AIConfig, image: string, prompt: string): P
 
 export function buildPackagePrompt(methodLabel: string) {
   return `Ты — чемпион-бариста. На фото — пачка кофе. Извлеки данные и составь рецепт для метода ${methodLabel}, доза 15 г.
-Верни СТРОГО JSON без markdown и пояснений:
+  Все текстовые поля (title, note, notes) пиши на русском языке.
+  Верни СТРОГО JSON без markdown и пояснений:
 {
   "bean": { "name": "строка", "origin": "строка", "process": "washed|natural|honey|anaerobic|other", "roastLevel": "light|medium|dark", "roastDate": "YYYY-MM-DD или null", "notes": "дескрипторы с пачки" },
   "recipe": { "title": "строка", "tempC": 88-96, "ratio": 14-17, "grind": "например: Comandante 24 клика", "steps": [ { "duration": секунды, "pourTo": суммарные граммы воды, "note": "строка" } ] }
