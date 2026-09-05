@@ -88,3 +88,52 @@ input.num { width: 70px; text-align: center; }
 
 .small { color: #98989f; font-size: 13px; margin: 14px 0 6px; }
 .back { background: none; border: 0; color: #4b8ef1; font-size: 16px; padding: 4px 0; cursor: pointer; }
+/* ---------- Каппинг + нижние табы ---------- */
+#root { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; display: flex;
+  background: #1c1c1f; border-top: 1px solid #2c2c31;
+  padding-bottom: env(safe-area-inset-bottom); z-index: 10;
+}
+.tabs button {
+  flex: 1; background: none; border: 0; color: #8e8e93;
+  padding: 12px 0 14px; font-size: 15px; cursor: pointer;
+}
+.tabs button.on { color: #fff; font-weight: 600; }
+
+.lotChips { display: flex; gap: 8px; overflow-x: auto; margin: 10px 0; padding-bottom: 4px; }
+.chip {
+  background: #242428; border: 0; border-radius: 999px; padding: 8px 14px;
+  font-size: 14px; white-space: nowrap; color: #98989f; cursor: pointer;
+}
+.chip.on { background: #0a3d91; color: #fff; }
+.chip.fault { background: #3a1d20; color: #ff6961; }
+
+.scoreBig { font-size: 46px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+
+.attrRow {
+  background: #242428; border-radius: 12px; padding: 10px 12px;
+  margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+}
+.attrRow .lbl { flex: 1; font-size: 14px; }
+
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper button {
+  width: 34px; height: 34px; border-radius: 10px; border: 0;
+  background: #2c2c31; color: #fff; font-size: 18px; cursor: pointer;
+}
+.stepper .val { min-width: 40px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.cups { display: flex; gap: 6px; }
+.cupBtn {
+  width: 32px; height: 32px; border-radius: 50%; border: 0;
+  background: #2c2c31; color: #8e8e93; font-size: 13px; cursor: pointer;
+}
+.cupBtn.on { background: #0a3d91; color: #fff; }
+
+textarea {
+  width: 100%; background: #242428; border: 0; border-radius: 12px;
+  color: #fff; padding: 12px; font-size: 15px; min-height: 80px;
+  font-family: inherit; margin-bottom: 8px;
+}
