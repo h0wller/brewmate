@@ -8,20 +8,22 @@ export function ScaleChip() {
   const [debug, setDebug] = useState(false)
   const disc = useRef<() => void>(() => {})
 
+  const push = (line: string) => setRaw(r => [...r.slice(-80), line])
+
   const connect = async () => {
     if (!btSupported()) {
       alert('Web Bluetooth недоступен на этом устройстве (iOS). Нужен Android/Chrome.')
       return
     }
     try {
-      const s = await connectScale((uuid, bytes) => {
-        setRaw(r => [...r.slice(-40), `${uuid.replace(/-/g, '').slice(0, 4)} | ${hex(bytes)}`])
-        // СЮДА позже встанет парсер твоей модели: onWeight(g)
-      })
+      const s = await connectScale(
+        (uuid, bytes) => push(`${uuid.slice(4, 8)} | ${hex(bytes)}`),
+        line => push(line),
+      )
       setName(s.name)
       disc.current = s.disconnect
       setOn(true)
-      setDebug(true) // сразу открываем сырой лог для отладки
+      setDebug(true)
     } catch (e) {
       alert((e as Error).message)
     }
@@ -46,7 +48,7 @@ export function ScaleChip() {
       </div>
       {on && debug && (
         <div className="rawLog" style={{ marginTop: 8 }}>
-          {raw.length === 0 && 'Жду пакеты… (нажми tare / поставь вес)'}
+          {raw.length === 0 && 'Жду пакеты…'}
           {raw.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}
