@@ -3,18 +3,23 @@ import { btSupported, connectScale, hex } from './bt/bt'
 import { parseFutula } from './bt/futula'
 
 const xorCk = (b: number[]) => b.reduce((a, x) => a ^ x, 0)
-const caCmd = (type: number) => {
-  const b = [0xca, 0x02, type, 0, 0, 0, 0, 0, 0x04, 0x01]
+const caCmd = (type: number, unit = 0x04) => {
+  const b = [0xca, 0x02, type, 0, 0, 0, 0, 0, unit, 0x01]
   return [...b, xorCk(b)]
 }
-/* Перебираем все командные байты 0x00–0x0F + легаси-варианты.
-   Смотри на ДИСПЛЕЙ весов: на каком cand# он обнулился — тот и tare. */
 const TARE_CANDIDATES: number[][] = [
   ...[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
       0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f].map(t => caCmd(t)),
   [0x03, 0x0a, 0x01, 0, 0, 0, 0, 0x02, 0, 0, 0, 0x10],
   [0x02, 0x01],
   [0x05],
+]
+/* Диагностик: пытаемся переключить единицы в мл командой с телефона */
+const UNIT_TEST: number[][] = [
+  caCmd(0x02, 0x07),
+  caCmd(0x07, 0x07),
+  caCmd(0x04, 0x07),
+  caCmd(0x09, 0x07),
 ]
 
 export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
@@ -73,12 +78,21 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   }
 
   const autoTare = async () => {
-    push('=== авто-подбор tare: СМОТРИ НА ДИСПЛЕЙ ВЕСОВ (~30 сек) ===')
+    push('=== авто-подбор tare: СМОТРИ НА ДИСПЛЕЙ (~30 сек) ===')
     for (let i = 0; i < TARE_CANDIDATES.length; i++) {
       await send(TARE_CANDIDATES[i], `cand#${i}`)
       await new Promise(r => setTimeout(r, 1500))
     }
-    push('=== конец: сообщи, на каком cand# дисплей обнулился (или «ни на каком») ===')
+    push('=== конец ===')
+  }
+
+  const unitTest = async () => {
+    push('=== тест write-канала: пытаюсь включить «мл» ===')
+    for (let i = 0; i < UNIT_TEST.length; i++) {
+      await send(UNIT_TEST[i], `ml#${i}`)
+      await new Promise(r => setTimeout(r, 1200))
+    }
+    push('=== если дисплей НЕ переключился в мл — write-канал мёртвый ===')
   }
 
   const sendManual = () => {
@@ -96,8 +110,9 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
         </button>
         {on && (
           <>
-            <button className="chip" onClick={() => setOffset(raw ?? 0)}>Tare (сайт)</button>
-            <button className="chip" onClick={autoTare}>🔍 Tare (весы)</button>
+            <button className="chip" onClick={() => setOffset(raw ?? 0)}>Tare</button>
+            <button className="chip" onClick={autoTare}>🔍 tare (весы)</button>
+            <button className="chip" onClick={unitTest}>🧪 мл-тест</button>
             <button className="chip" onClick={() => setDebug(d => !d)}>
               {debug ? 'скрыть лог' : 'лог'}
             </button>
@@ -109,7 +124,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
           <span className="val">{net.toFixed(1)}</span>
           <span className="unit"> {unit}</span>
           <span className={'stab' + (stable ? ' ok' : '')}>{stable ? 'стабильно' : '…'}</span>
-          {offset !== 0 && <div className="small">тар (сайт): {offset.toFixed(1)} {unit}</div>}
+          {offset !== 0 && <div className="small">тар: {offset.toFixed(1)} {unit}</div>}
         </div>
       )}
       {on && debug && (
