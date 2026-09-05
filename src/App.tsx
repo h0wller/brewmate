@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react'
-import type { CuppingSession, Recipe } from './types'
-import { loadRecipes, loadSessions, saveRecipes, saveSessions } from './storage'
+import type { BeanProfile, CuppingSession, Recipe } from './types'
+import {
+  loadBeans, loadRecipes, loadSessions,
+  saveBeans, saveRecipes, saveSessions, uid,
+} from './storage'
 import { BrewTimer } from './BrewTimer'
 import { RecipeEditor } from './RecipeEditor'
 import { CuppingList } from './CuppingList'
 import { CuppingSessionView } from './CuppingSession'
+import { BeansList } from './BeansList'
+import { BeanView } from './BeanView'
 
 type BrewView = { name: 'list' } | { name: 'timer'; id: string } | { name: 'edit'; id?: string }
 type CupView = { name: 'list' } | { name: 'session'; id: string }
+type BeanViewNav = { name: 'list' } | { name: 'detail'; id: string }
 
 export default function App() {
-  const [tab, setTab] = useState<'brew' | 'cup'>('brew')
+  const [tab, setTab] = useState<'brew' | 'bean' | 'cup'>('brew')
 
   const [recipes, setRecipes] = useState<Recipe[]>(loadRecipes)
   const [brew, setBrew] = useState<BrewView>({ name: 'list' })
@@ -19,6 +25,10 @@ export default function App() {
   const [sessions, setSessions] = useState<CuppingSession[]>(loadSessions)
   const [cup, setCup] = useState<CupView>({ name: 'list' })
   useEffect(() => saveSessions(sessions), [sessions])
+
+  const [beans, setBeans] = useState<BeanProfile[]>(loadBeans)
+  const [beanNav, setBeanNav] = useState<BeanViewNav>({ name: 'list' })
+  useEffect(() => saveBeans(beans), [beans])
 
   const upsertRecipe = (r: Recipe) => {
     setRecipes(rs => rs.some(x => x.id === r.id) ? rs.map(x => x.id === r.id ? r : x) : [r, ...rs])
@@ -60,7 +70,7 @@ export default function App() {
           <div className="card" key={r.id} onClick={() => setBrew({ name: 'timer', id: r.id })}>
             <div className="grow">
               <div>{r.title}</div>
-              <div className="meta">{r.doseG} г · {r.waterG} г воды · {r.tempC}°C</div>
+              <div className="meta">{r.doseG} г · {r.waterG} г воды · {r.tempC}°C{r.grind ? ` · ${r.grind}` : ''}</div>
             </div>
             <button className={'heart' + (r.favorite ? ' on' : '')}
               onClick={e => {
@@ -72,6 +82,37 @@ export default function App() {
           </div>
         ))}
       </div>
+    )
+  }
+
+  const beanContent = () => {
+    if (beanNav.name === 'detail') {
+      const b = beans.find(x => x.id === beanNav.id)
+      return b ? (
+        <BeanView
+          key={b.id}
+          bean={b}
+          onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? nb : x))}
+          onBack={() => setBeanNav({ name: 'list' })}
+          onMakeRecipe={r => {
+            setRecipes(rs => [r, ...rs])
+            setTab('brew')
+            setBrew({ name: 'edit', id: r.id })
+          }}
+        />
+      ) : null
+    }
+    return (
+      <BeansList
+        beans={beans}
+        onOpen={id => setBeanNav({ name: 'detail', id })}
+        onCreate={() => {
+          const b: BeanProfile = { id: uid(), name: '', createdAt: Date.now() }
+          setBeans(bs => [b, ...bs])
+          setBeanNav({ name: 'detail', id: b.id })
+        }}
+        onDelete={id => setBeans(bs => bs.filter(x => x.id !== id))}
+      />
     )
   }
 
@@ -99,9 +140,10 @@ export default function App() {
 
   return (
     <div>
-      {tab === 'brew' ? brewContent() : cupContent()}
+      {tab === 'brew' ? brewContent() : tab === 'bean' ? beanContent() : cupContent()}
       <nav className="tabs">
         <button className={tab === 'brew' ? 'on' : ''} onClick={() => setTab('brew')}>☕ Заваривание</button>
+        <button className={tab === 'bean' ? 'on' : ''} onClick={() => setTab('bean')}>🫘 Зерно</button>
         <button className={tab === 'cup' ? 'on' : ''} onClick={() => setTab('cup')}>🧪 Каппинг</button>
       </nav>
     </div>

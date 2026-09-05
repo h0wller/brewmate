@@ -1,7 +1,8 @@
-import type { CuppingSession, Recipe } from './types'
+import type { BeanProfile, CuppingSession, Recipe } from './types'
 
 const RKEY = 'brewmate.recipes.v1'
 const CKEY = 'brewmate.cupping.v1'
+const BKEY = 'brewmate.beans.v1'
 
 export const loadRecipes = (): Recipe[] => {
   try { return JSON.parse(localStorage.getItem(RKEY) ?? '[]') } catch { return [] }
@@ -12,5 +13,10 @@ export const loadSessions = (): CuppingSession[] => {
   try { return JSON.parse(localStorage.getItem(CKEY) ?? '[]') } catch { return [] }
 }
 export const saveSessions = (s: CuppingSession[]) => localStorage.setItem(CKEY, JSON.stringify(s))
+
+export const loadBeans = (): BeanProfile[] => {
+  try { return JSON.parse(localStorage.getItem(BKEY) ?? '[]') } catch { return [] }
+}
+export const saveBeans = (b: BeanProfile[]) => localStorage.setItem(BKEY, JSON.stringify(b))
 
 export const uid = () => Math.random().toString(36).slice(2, 10)

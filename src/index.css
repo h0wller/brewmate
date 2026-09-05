@@ -137,3 +137,9 @@ textarea {
   color: #fff; padding: 12px; font-size: 15px; min-height: 80px;
   font-family: inherit; margin-bottom: 8px;
 }
+/* ---------- Зерно ---------- */
+.swatch { width: 28px; height: 28px; border-radius: 8px; border: 1px solid #3a3a3f; }
+.swatchLabel { color: #98989f; font-size: 14px; }
+.recBig { display: flex; justify-content: space-around; text-align: center; margin: 6px 0 10px; }
+.recVal { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tip { color: #98989f; font-size: 13px; margin: 4px 0; }
