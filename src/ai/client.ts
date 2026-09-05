@@ -67,3 +67,20 @@ export function buildPackagePrompt(methodLabel: string) {
 Правила: светлая обжарка — вода горячее и помол мельче; тёмная — вода холоднее и помол крупнее; натуральная обработка — чуть крупнее помол.
 steps: 3–5 шагов, первый — блюм (2–3 веса дозы), pourTo растёт монотонно до dose*ratio.`
 }
+/* Быстрая проверка ключа/модели текстовым запросом */
+export async function pingAI(cfg: AIConfig): Promise<string> {
+  const res = await fetch(cfg.baseUrl.replace(/\/$/, '') + '/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cfg.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: cfg.model,
+      messages: [{ role: 'user', content: 'Ответь одним словом: кофе' }],
+    }),
+  })
+  if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).slice(0, 300)}`)
+  const d = await res.json()
+  return d.choices?.[0]?.message?.content ?? 'OK'
+}
