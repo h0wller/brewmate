@@ -7,12 +7,11 @@ const caCmd = (type: number) => {
   const b = [0xca, 0x02, type, 0, 0, 0, 0, 0, 0x04, 0x01]
   return [...b, xorCk(b)]
 }
-/* Кандидаты tare для LFSmart/FUTULA — перебираем, смотрим на дисплей весов */
+/* Перебираем все командные байты 0x00–0x0F + легаси-варианты.
+   Смотри на ДИСПЛЕЙ весов: на каком cand# он обнулился — тот и tare. */
 const TARE_CANDIDATES: number[][] = [
-  caCmd(0x05),
-  caCmd(0x01),
-  caCmd(0x03),
-  caCmd(0x07),
+  ...[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+      0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f].map(t => caCmd(t)),
   [0x03, 0x0a, 0x01, 0, 0, 0, 0, 0x02, 0, 0, 0, 0x10],
   [0x02, 0x01],
   [0x05],
@@ -22,6 +21,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const [on, setOn] = useState(false)
   const [name, setName] = useState('')
   const [raw, setRawG] = useState<number | null>(null)
+  const [unit, setUnit] = useState('г')
   const [stable, setStable] = useState(false)
   const [offset, setOffset] = useState(0)
   const [debug, setDebug] = useState(false)
@@ -41,11 +41,9 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
           const short = uuid.replace(/-/g, '').slice(4, 8)
           if (short === 'fff4') {
             const p = parseFutula(bytes)
-            if (p) { setRawG(p.rawG); setStable(p.stable) }
-            push(`${short} | ${hex(bytes)}`)   // вернул весовые пакеты в лог
-          } else {
-            push(`${short} | ${hex(bytes)}`)
+            if (p) { setRawG(p.rawG); setStable(p.stable); setUnit(p.unit) }
           }
+          push(`${short} | ${hex(bytes)}`)
         },
         line => push(line),
       )
@@ -75,12 +73,12 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   }
 
   const autoTare = async () => {
-    push('=== авто-подбор tare: СМОТРИ НА ДИСПЛЕЙ ВЕСОВ ===')
+    push('=== авто-подбор tare: СМОТРИ НА ДИСПЛЕЙ ВЕСОВ (~30 сек) ===')
     for (let i = 0; i < TARE_CANDIDATES.length; i++) {
       await send(TARE_CANDIDATES[i], `cand#${i}`)
       await new Promise(r => setTimeout(r, 1500))
     }
-    push('=== конец: напиши, на каком cand# дисплей обнулился ===')
+    push('=== конец: сообщи, на каком cand# дисплей обнулился (или «ни на каком») ===')
   }
 
   const sendManual = () => {
@@ -109,9 +107,9 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
       {on && net !== null && (
         <div className="scaleWeight">
           <span className="val">{net.toFixed(1)}</span>
-          <span className="unit"> г</span>
+          <span className="unit"> {unit}</span>
           <span className={'stab' + (stable ? ' ok' : '')}>{stable ? 'стабильно' : '…'}</span>
-          {offset !== 0 && <div className="small">тар (сайт): {offset.toFixed(1)} г</div>}
+          {offset !== 0 && <div className="small">тар (сайт): {offset.toFixed(1)} {unit}</div>}
         </div>
       )}
       {on && debug && (
@@ -122,7 +120,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
             <button className="chip" onClick={sendManual}>Отпр.</button>
           </div>
           <div className="rawLog">
-            <div>raw: {raw?.toFixed(1) ?? '—'} г · net: {net?.toFixed(1) ?? '—'} г · offset: {offset.toFixed(1)} г</div>
+            <div>raw: {raw?.toFixed(1) ?? '—'} {unit} · net: {net?.toFixed(1) ?? '—'} {unit} · offset: {offset.toFixed(1)}</div>
             {log.length === 0 && '—'}
             {log.map((l, i) => <div key={i}>{l}</div>)}
           </div>
