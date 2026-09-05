@@ -3,10 +3,17 @@ export const btSupported = () => typeof (navigator as any).bluetooth !== 'undefi
 type DataHandler = (charUuid: string, bytes: Uint8Array) => void
 type InfoHandler = (line: string) => void
 
+export interface ScaleHandle {
+  name: string
+  tare: () => void
+  disconnect: () => void
+  writeChar?: any
+}
+
 export async function connectScale(
   onData: DataHandler,
   onInfo: InfoHandler,
-): Promise<{ name: string; disconnect: () => void }> {
+): Promise<ScaleHandle> {
   const nav = navigator as any
   if (!nav.bluetooth) {
     throw new Error('Web Bluetooth недоступен на этом устройстве (iOS). Нужен Android/Chrome.')
@@ -19,6 +26,7 @@ export async function connectScale(
 
   const server = await device.gatt!.connect()
   const services = await server.getPrimaryServices()
+  let writeChar: any = null
   for (const s of services) {
     onInfo(`service ${s.uuid}`)
     let chars: any[] = []
@@ -28,6 +36,7 @@ export async function connectScale(
       const flags = [p.read && 'read', p.write && 'write', p.notify && 'notify', p.indicate && 'indicate']
         .filter(Boolean).join('+')
       onInfo(`  char ${c.uuid} [${flags}]`)
+      if (p.write || p.writeWithoutResponse) writeChar = c
       if (p.notify || p.indicate) {
         try {
           await c.startNotifications()
@@ -42,7 +51,15 @@ export async function connectScale(
   }
   return {
     name: device.name || 'scale',
+    tare: async () => {
+      if (!writeChar) return
+      try {
+        const { TARE_CMD } = await import('./futula')
+        await writeChar.writeValueWithResponse(TARE_CMD)
+      } catch {}
+    },
     disconnect: () => { try { device.gatt?.disconnect() } catch {} },
+    writeChar,
   }
 }
 

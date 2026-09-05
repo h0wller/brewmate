@@ -5,7 +5,6 @@ export const fmt = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
 
 let audio: AudioContext | null = null
-
 export function beep(times = 1) {
   const AC = window.AudioContext || (window as any).webkitAudioContext
   if (!AC) return
@@ -15,21 +14,19 @@ export function beep(times = 1) {
     const t = audio.currentTime + i * 0.3
     const o = audio.createOscillator()
     const g = audio.createGain()
-    o.type = 'sine'
-    o.frequency.value = 880
-    o.connect(g)
-    g.connect(audio.destination)
+    o.type = 'sine'; o.frequency.value = 880
+    o.connect(g); g.connect(audio.destination)
     g.gain.setValueAtTime(0.001, t)
     g.gain.exponentialRampToValueAtTime(0.4, t + 0.02)
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.25)
-    o.start(t)
-    o.stop(t + 0.3)
+    o.start(t); o.stop(t + 0.3)
   }
 }
 
 export function useBrewTimer(recipe: Recipe) {
   const [status, setStatus] = useState<'idle' | 'run' | 'pause' | 'done'>('idle')
   const [elapsed, setElapsed] = useState(0)
+  const [liveG, setLiveG] = useState<number | null>(null)
   const base = useRef(0)
   const startAt = useRef(0)
   const wake = useRef<any>(null)
@@ -97,5 +94,9 @@ export function useBrewTimer(recipe: Recipe) {
     wake.current?.release?.()
   }
 
-  return { status, elapsed, total, stepIndex, start, pause, resume, reset }
+  return {
+    status, elapsed, total, stepIndex,
+    liveG, setLiveG,
+    start, pause, resume, reset,
+  }
 }
