@@ -5,9 +5,8 @@ type InfoHandler = (line: string) => void
 
 export interface ScaleHandle {
   name: string
-  tare: () => void
+  write: (bytes: Uint8Array) => Promise<void>
   disconnect: () => void
-  writeChar?: any
 }
 
 export async function connectScale(
@@ -51,9 +50,12 @@ export async function connectScale(
   }
   return {
     name: device.name || 'scale',
-    tare: () => {}, // теперь таром рулит ScaleChip через offset,
+    write: async (bytes: Uint8Array) => {
+      if (!writeChar) throw new Error('нет write-характеристики')
+      try { await writeChar.writeValueWithResponse(bytes) }
+      catch { await writeChar.writeValueWithoutResponse(bytes) }
+    },
     disconnect: () => { try { device.gatt?.disconnect() } catch {} },
-    writeChar,
   }
 }
 
