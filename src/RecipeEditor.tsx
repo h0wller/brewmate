@@ -13,8 +13,9 @@ export function RecipeEditor({
   onCancel: () => void
   onDelete?: (id: string) => void
 }) {
+  /* ленивая инициализация: новый id и время считаются один раз, а не на каждый рендер */
   const [r, setR] = useState<Recipe>(
-    initial ?? {
+    () => initial ?? {
       id: uid(),
       title: '',
       method: 'v60',

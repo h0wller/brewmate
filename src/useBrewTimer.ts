@@ -34,10 +34,10 @@ export function useBrewTimer(recipe: Recipe) {
 
   const total = recipe.steps.reduce((s, x) => s + x.duration, 0)
 
-  const bounds = useMemo(() => {
-    let a = 0
-    return recipe.steps.map(st => (a += st.duration))
-  }, [recipe])
+  const bounds = useMemo(
+    () => recipe.steps.reduce<number[]>((acc, st) => [...acc, (acc.at(-1) ?? 0) + st.duration], []),
+    [recipe],
+  )
 
   const idx = bounds.findIndex(b => elapsed < b)
   const stepIndex = idx === -1 ? bounds.length - 1 : idx

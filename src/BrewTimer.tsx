@@ -9,8 +9,8 @@ export function BrewTimer({ recipe }: { recipe: Recipe }) {
     start, pause, resume, reset,
   } = useBrewTimer(recipe)
 
-  let acc = 0
-  const rows = recipe.steps.map((s, i) => ({ ...s, end: (acc += s.duration), i }))
+  const ends = recipe.steps.reduce<number[]>((acc, s) => [...acc, (acc.at(-1) ?? 0) + s.duration], [])
+  const rows = recipe.steps.map((s, i) => ({ ...s, end: ends[i], i }))
   const cur = rows[stepIndex]
 
   // прогресс по граммам, если подключены весы
