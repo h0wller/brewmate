@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { BeanProfile, CuppingSession, Recipe } from './types'
 import {
-  loadBeans, loadRecipes, loadSessions,
-  saveBeans, saveRecipes, saveSessions, uid,
+  loadBeans, loadDeleted, loadRecipes, loadSessions,
+  saveBeans, saveDeleted, saveRecipes, saveSessions, uid,
 } from './storage'
+import { stamp } from './sync/merge'
+import type { Tombstones } from './sync/merge'
 import { BrewTimer } from './BrewTimer'
 import { RecipeEditor } from './RecipeEditor'
 import { CuppingList } from './CuppingList'
@@ -36,11 +38,18 @@ export default function App() {
   const [beanNav, setBeanNav] = useState<BeanNav>({ name: 'list' })
   useEffect(() => saveBeans(beans), [beans])
 
+  /* метки удалений: без них синхронизация вернёт удалённое обратно */
+  const [deleted, setDeleted] = useState<Tombstones>(loadDeleted)
+  useEffect(() => saveDeleted(deleted), [deleted])
+  const markDeleted = (id: string) => setDeleted(d => ({ ...d, [id]: Date.now() }))
+
   const upsertRecipe = (r: Recipe) => {
-    setRecipes(rs => rs.some(x => x.id === r.id) ? rs.map(x => x.id === r.id ? r : x) : [r, ...rs])
+    const s = stamp(r)
+    setRecipes(rs => rs.some(x => x.id === s.id) ? rs.map(x => x.id === s.id ? s : x) : [s, ...rs])
     setBrew({ name: 'list' })
   }
   const delRecipe = (id: string) => {
+    markDeleted(id)
     setRecipes(rs => rs.filter(x => x.id !== id))
     setBrew({ name: 'list' })
   }
@@ -50,8 +59,8 @@ export default function App() {
     if (brew.name === 'settings') return (
       <SyncSettings
         initial={loadSyncConfig()}
-        local={{ recipes, sessions, beans }}
-        onMerged={d => { setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans) }}
+        local={{ recipes, sessions, beans, deleted }}
+        onMerged={d => { setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans); setDeleted(d.deleted) }}
         onClose={() => setBrew({ name: 'list' })}
       />
     )
@@ -94,7 +103,7 @@ export default function App() {
             <button className={'heart' + (r.favorite ? ' on' : '')}
               onClick={e => {
                 e.stopPropagation()
-                setRecipes(rs => rs.map(x => x.id === r.id ? { ...x, favorite: !x.favorite } : x))
+                setRecipes(rs => rs.map(x => x.id === r.id ? stamp({ ...x, favorite: !x.favorite }) : x))
               }}>
               {r.favorite ? '♥' : '♡'}
             </button>
@@ -111,10 +120,10 @@ export default function App() {
         <BeanView
           key={b.id}
           bean={b}
-          onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? nb : x))}
+          onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? stamp(nb) : x))}
           onBack={() => setBeanNav({ name: 'list' })}
           onMakeRecipe={r => {
-            setRecipes(rs => [r, ...rs])
+            setRecipes(rs => [stamp(r), ...rs])
             setTab('brew')
             setBrew({ name: 'edit', id: r.id })
           }}
@@ -126,11 +135,11 @@ export default function App() {
         beans={beans}
         onOpen={id => setBeanNav({ name: 'detail', id })}
         onCreate={() => {
-          const b: BeanProfile = { id: uid(), name: '', createdAt: Date.now() }
+          const b: BeanProfile = stamp({ id: uid(), name: '', createdAt: Date.now() })
           setBeans(bs => [b, ...bs])
           setBeanNav({ name: 'detail', id: b.id })
         }}
-        onDelete={id => setBeans(bs => bs.filter(x => x.id !== id))}
+        onDelete={id => { markDeleted(id); setBeans(bs => bs.filter(x => x.id !== id)) }}
       />
     )
   }
@@ -143,7 +152,7 @@ export default function App() {
           key={s.id}
           session={s}
           onBack={() => setCup({ name: 'list' })}
-          onChange={ns => setSessions(ss => ss.map(x => x.id === ns.id ? ns : x))}
+          onChange={ns => setSessions(ss => ss.map(x => x.id === ns.id ? stamp(ns) : x))}
         />
       ) : null
     }
@@ -151,8 +160,8 @@ export default function App() {
       <CuppingList
         sessions={sessions}
         onOpen={id => setCup({ name: 'session', id })}
-        onCreate={s => { setSessions(ss => [s, ...ss]); setCup({ name: 'session', id: s.id }) }}
-        onDelete={id => setSessions(ss => ss.filter(x => x.id !== id))}
+        onCreate={s => { setSessions(ss => [stamp(s), ...ss]); setCup({ name: 'session', id: s.id }) }}
+        onDelete={id => { markDeleted(id); setSessions(ss => ss.filter(x => x.id !== id)) }}
       />
     )
   }

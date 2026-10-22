@@ -4,6 +4,7 @@ export interface Recipe {
   id: string; title: string; method: string;
   doseG: number; waterG: number; tempC: number; grind?: string;
   steps: BrewStep[]; favorite?: boolean; createdAt: number;
+  updatedAt?: number; // время последней правки (для слияния при синхронизации)
 }
 
 export interface BeanProfile {
@@ -17,6 +18,7 @@ export interface BeanProfile {
   roastDate?: string
   notes?: string
   createdAt: number
+  updatedAt?: number
 }
 
 /* ---------- Каппинг ---------- */
@@ -41,5 +43,6 @@ export interface CuppingSession {
   title: string
   form: 'sca' | 'coe'
   createdAt: number
+  updatedAt?: number
   lots: CuppingLot[]
 }
