@@ -23,6 +23,7 @@ npm ci
 npm run dev       # разработка
 npm run build     # tsc + production-сборка
 npm run lint      # oxlint
+npm test          # юнит-тесты (vitest)
 npm run preview   # предпросмотр сборки
 ```
 
