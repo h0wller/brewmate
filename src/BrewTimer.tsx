@@ -14,7 +14,7 @@ export function BrewTimer({ recipe }: { recipe: Recipe }) {
   const cur = rows[stepIndex]
 
   // прогресс по граммам, если подключены весы
-  const progressPct = liveG !== null && cur
+  const progressPct = liveG !== null && cur && cur.pourTo > 0
     ? Math.min(100, Math.max(0, (liveG / cur.pourTo) * 100))
     : total ? Math.min(100, (elapsed / total) * 100) : 0
 

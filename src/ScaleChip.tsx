@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { btSupported, connectScale, hex } from './bt/bt'
+import type { ScaleHandle } from './bt/bt'
 import { fdCmd, parseFutula, unitCmd } from './bt/futula'
 
-export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
+/* onWeight получает null, пока весы не подключены (или нет показаний) */
+export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void }) {
   const [on, setOn] = useState(false)
   const [name, setName] = useState('')
   const [raw, setRawG] = useState<number | null>(null)
@@ -12,9 +14,17 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   const [debug, setDebug] = useState(false)
   const [log, setLog] = useState<string[]>([])
   const [cmdHex, setCmdHex] = useState('')
-  const handle = useRef<any>(null)
+  const handle = useRef<ScaleHandle | null>(null)
+  const handshakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cbRef = useRef(onWeight)
   useEffect(() => { cbRef.current = onWeight }, [onWeight])
+
+  /* уходим с экрана таймера — отпускаем весы и гасим отложенный handshake */
+  useEffect(() => () => {
+    if (handshakeTimer.current) clearTimeout(handshakeTimer.current)
+    handle.current?.disconnect()
+    handle.current = null
+  }, [])
 
   const push = (line: string) => setLog(r => [...r.slice(-80), line])
 
@@ -28,7 +38,10 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
     }
   }
 
-  const handshake = () => setTimeout(() => send([0x06, 0x0f, 0x00, 0x00], 'handshake'), 600)
+  const handshake = () => {
+    if (handshakeTimer.current) clearTimeout(handshakeTimer.current)
+    handshakeTimer.current = setTimeout(() => send([0x06, 0x0f, 0x00, 0x00], 'handshake'), 600)
+  }
 
   const connect = async () => {
     if (!btSupported()) { alert('Web Bluetooth недоступен (iOS).'); return }
@@ -53,12 +66,13 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number) => void }) {
   }
 
   const disconnect = () => {
+    if (handshakeTimer.current) clearTimeout(handshakeTimer.current)
     handle.current?.disconnect(); handle.current = null
     setOn(false); setRawG(null); setOffset(0); setLog([])
   }
 
   const net = raw === null ? null : raw - offset
-  useEffect(() => { cbRef.current?.(net ?? 0) }, [net])
+  useEffect(() => { cbRef.current?.(net) }, [net])
 
   const sendManual = () => {
     const bytes = cmdHex.trim().split(/[\s,]+/).filter(Boolean)

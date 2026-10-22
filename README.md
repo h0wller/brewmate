@@ -1,32 +1,50 @@
-# React + TypeScript + Vite
+# BrewMate ☕
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+PWA для кофейных энтузиастов и профессионалов: рецепты с таймером, профиль зерна, каппинг, BLE-весы и AI-рецепты по фото пачки. Интерфейс на русском, данные хранятся на устройстве.
 
-Currently, two official plugins are available:
+## Возможности
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Заваривание** — рецепты (доза, вода, температура, помол, шаги) и таймер со звуковыми сигналами; при подключённых весах прогресс шага считается по граммам.
+- **Зерно** — профиль зерна, прикидка обжарки (Agtron) по фото, рекомендации по помолу, температуре и пропорции, создание рецепта в один клик.
+- **AI-рецепт** — фото пачки → профиль зерна и рецепт через любую vision-модель с OpenAI-совместимым API (Qwen, Gemini, Groq, OpenRouter или свой endpoint). Ключ хранится только в localStorage устройства.
+- **Каппинг** — формы SCA и CoE, несколько лотов в сессии, дефекты, подсчёт баллов.
+- **Весы** — Web Bluetooth, протокол FUTULA / LFSmart (вес, стабильность, единицы, tare). Работает в Chrome на Android; на iOS Web Bluetooth недоступен.
+- **Синхронизация** — опционально через Supabase по общему коду.
+- **PWA** — устанавливается на домашний экран, таймер, рецепты и каппинг работают офлайн (интернет нужен только для AI и синхронизации).
 
-## React Compiler
+## Стек
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+React 19 · TypeScript · Vite · vite-plugin-pwa · Supabase (синхронизация) · Oxlint
 
-## Expanding the Oxlint configuration
+## Запуск
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci
+npm run dev       # разработка
+npm run build     # tsc + production-сборка
+npm run lint      # oxlint
+npm run preview   # предпросмотр сборки
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Структура
+
+```
+src/
+  App.tsx                 вкладки и общее состояние
+  useBrewTimer.ts         логика таймера
+  ScaleChip.tsx           UI весов
+  bt/                     Web Bluetooth и парсер протокола FUTULA
+  beans/engine.ts         рекомендации и оценка обжарки по фото
+  cupping/sca.ts          формулы SCA / CoE
+  ai/client.ts            клиент vision-моделей (OpenAI-формат)
+  sync/sync.ts            синхронизация через Supabase
+  storage.ts              хранение в localStorage
+```
+
+## Синхронизация (Supabase)
+
+Нужен проект Supabase с таблицей `sync` (`id text primary key`, `data jsonb`, `updated_at timestamptz`). URL проекта, anon key и общий код вводятся в приложении (⚙️ на экране рецептов). Перед использованием настрой RLS для таблицы.
+
+## Статус
+
+Прототип. Известные задачи и план — в аудите проекта: надёжное слияние при синхронизации, экспорт/импорт данных, тесты, сверка формул каппинга с официальными формами.
