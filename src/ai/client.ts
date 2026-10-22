@@ -7,8 +7,8 @@ export interface AIConfig {
 
 export const AI_PROVIDERS = [
   { id: 'qwen', label: 'Qwen · DashScope', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', model: 'qwen-vl-max' },
-  { id: 'gemini', label: 'Gemini · free', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.0-flash' },
-  { id: 'groq', label: 'Groq · free', baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.2-90b-vision-preview' },
+  { id: 'gemini', label: 'Gemini · free', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash' },
+  { id: 'groq', label: 'Groq · free', baseUrl: 'https://api.groq.com/openai/v1', model: 'meta-llama/llama-4-scout-17b-16e-instruct' },
   { id: 'openrouter', label: 'OpenRouter · free', baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.2-11b-vision-instruct:free' },
   { id: 'custom', label: 'Свой (OpenAI-формат)', baseUrl: '', model: '' },
 ]
