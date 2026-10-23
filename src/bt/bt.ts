@@ -2,7 +2,7 @@ export const btSupported = () => typeof (navigator as any).bluetooth !== 'undefi
 
 type DataHandler = (charUuid: string, bytes: Uint8Array) => void
 type InfoHandler = (line: string) => void
-type ConnectHandler = () => void
+type ConnectHandler = (deviceName: string) => void
 
 export interface ScaleHandle {
   name: string
@@ -59,13 +59,13 @@ export async function connectScale(
       try {
         await setup()
         onInfo('✔ переподключено')
-        onConnect()
+        onConnect(device.name || '')
       } catch { onInfo('✖ переподключение не удалось') }
     }, 2000)
   })
 
   await setup()
-  onConnect()
+  onConnect(device.name || '')
 
   return {
     name: device.name || 'scale',
