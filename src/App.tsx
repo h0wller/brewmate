@@ -14,28 +14,31 @@ import { BeansList } from './BeansList'
 import { BeanView } from './BeanView'
 import { SyncSettings } from './SyncSettings'
 import { loadSyncConfig } from './sync/sync'
+import { tabOf } from './route'
+import type { Route } from './route'
+import { goBack, navigate, useRoute } from './useRoute'
 
-type BrewView =
-  | { name: 'list' }
-  | { name: 'timer'; id: string }
-  | { name: 'edit'; id?: string }
-  | { name: 'settings' }
-type CupView = { name: 'list' } | { name: 'session'; id: string }
-type BeanNav = { name: 'list' } | { name: 'detail'; id: string }
+/* Запись по ссылке не найдена (удалена или ссылка устарела) */
+function NotFound({ to, label }: { to: Route; label: string }) {
+  return (
+    <div>
+      <button className="back" onClick={() => navigate(to, { replace: true })}>← {label}</button>
+      <div className="small">Такой записи нет — возможно, она удалена.</div>
+    </div>
+  )
+}
 
 export default function App() {
-  const [tab, setTab] = useState<'brew' | 'bean' | 'cup'>('brew')
+  const route = useRoute()
+  const tab = tabOf(route)
 
   const [recipes, setRecipes] = useState<Recipe[]>(loadRecipes)
-  const [brew, setBrew] = useState<BrewView>({ name: 'list' })
   useEffect(() => saveRecipes(recipes), [recipes])
 
   const [sessions, setSessions] = useState<CuppingSession[]>(loadSessions)
-  const [cup, setCup] = useState<CupView>({ name: 'list' })
   useEffect(() => saveSessions(sessions), [sessions])
 
   const [beans, setBeans] = useState<BeanProfile[]>(loadBeans)
-  const [beanNav, setBeanNav] = useState<BeanNav>({ name: 'list' })
   useEffect(() => saveBeans(beans), [beans])
 
   /* метки удалений: без них синхронизация вернёт удалённое обратно */
@@ -46,133 +49,141 @@ export default function App() {
   const upsertRecipe = (r: Recipe) => {
     const s = stamp(r)
     setRecipes(rs => rs.some(x => x.id === s.id) ? rs.map(x => x.id === s.id ? s : x) : [s, ...rs])
-    setBrew({ name: 'list' })
+    navigate({ name: 'brew' }, { replace: true })
   }
   const delRecipe = (id: string) => {
     markDeleted(id)
     setRecipes(rs => rs.filter(x => x.id !== id))
-    setBrew({ name: 'list' })
+    navigate({ name: 'brew' }, { replace: true })
   }
 
-  const brewContent = () => {
-    /* ⚙️ Синхронизация — отдельный экран внутри таба «Заваривание» */
-    if (brew.name === 'settings') return (
-      <SyncSettings
-        initial={loadSyncConfig()}
-        local={{ recipes, sessions, beans, deleted }}
-        onMerged={d => { setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans); setDeleted(d.deleted) }}
-        onClose={() => setBrew({ name: 'list' })}
-      />
-    )
-    if (brew.name === 'timer') {
-      const r = recipes.find(x => x.id === brew.id)
-      return r ? (
-        <div>
-          <button className="back" onClick={() => setBrew({ name: 'list' })}>← Рецепты</button>
-          <h1>{r.title}</h1>
-          <BrewTimer key={r.id} recipe={r} />
-        </div>
-      ) : null
-    }
-    if (brew.name === 'edit') return (
-      <RecipeEditor
-        initial={recipes.find(x => x.id === brew.id)}
-        onSave={upsertRecipe}
-        onCancel={() => setBrew({ name: 'list' })}
-        onDelete={delRecipe}
-      />
-    )
-    return (
-      <div>
-        <div className="header">
-          <h1>BrewMate ☕</h1>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 14px' }}
-              onClick={() => setBrew({ name: 'settings' })}>⚙️</button>
-            <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 18px' }}
-              onClick={() => setBrew({ name: 'edit' })}>+</button>
-          </div>
-        </div>
-        {recipes.length === 0 && <div className="small">Пока пусто — создай первый рецепт ☕️</div>}
-        {recipes.map(r => (
-          <div className="card" key={r.id} onClick={() => setBrew({ name: 'timer', id: r.id })}>
-            <div className="grow">
-              <div>{r.title}</div>
-              <div className="meta">{r.doseG} г · {r.waterG} г воды · {r.tempC}°C{r.grind ? ` · ${r.grind}` : ''}</div>
-            </div>
-            <button className={'heart' + (r.favorite ? ' on' : '')}
-              onClick={e => {
-                e.stopPropagation()
-                setRecipes(rs => rs.map(x => x.id === r.id ? stamp({ ...x, favorite: !x.favorite }) : x))
-              }}>
-              {r.favorite ? '♥' : '♡'}
-            </button>
-          </div>
-        ))}
-      </div>
-    )
-  }
+  const content = () => {
+    switch (route.name) {
+      /* ⚙️ Данные и синхронизация — отдельный экран внутри вкладки «Заваривание» */
+      case 'settings': return (
+        <SyncSettings
+          initial={loadSyncConfig()}
+          local={{ recipes, sessions, beans, deleted }}
+          onMerged={d => { setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans); setDeleted(d.deleted) }}
+          onClose={() => goBack({ name: 'brew' })}
+        />
+      )
 
-  const beanContent = () => {
-    if (beanNav.name === 'detail') {
-      const b = beans.find(x => x.id === beanNav.id)
-      return b ? (
-        <BeanView
-          key={b.id}
-          bean={b}
-          onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? stamp(nb) : x))}
-          onBack={() => setBeanNav({ name: 'list' })}
-          onMakeRecipe={r => {
-            setRecipes(rs => [stamp(r), ...rs])
-            setTab('brew')
-            setBrew({ name: 'edit', id: r.id })
+      case 'timer': {
+        const r = recipes.find(x => x.id === route.id)
+        return r ? (
+          <div>
+            <button className="back" onClick={() => navigate({ name: 'brew' })}>← Рецепты</button>
+            <h1>{r.title}</h1>
+            <button className="chip" onClick={() => navigate({ name: 'edit', id: r.id })}>✏️ Изменить рецепт</button>
+            <BrewTimer key={r.id} recipe={r} />
+          </div>
+        ) : <NotFound to={{ name: 'brew' }} label="Рецепты" />
+      }
+
+      case 'edit': {
+        const r = route.id ? recipes.find(x => x.id === route.id) : undefined
+        if (route.id && !r) return <NotFound to={{ name: 'brew' }} label="Рецепты" />
+        return (
+          <RecipeEditor
+            key={route.id ?? 'new'}
+            initial={r}
+            onSave={upsertRecipe}
+            onCancel={() => goBack({ name: 'brew' })}
+            onDelete={delRecipe}
+          />
+        )
+      }
+
+      case 'beans': return (
+        <BeansList
+          beans={beans}
+          onOpen={id => navigate({ name: 'bean', id })}
+          onCreate={() => {
+            const b: BeanProfile = stamp({ id: uid(), name: '', createdAt: Date.now() })
+            setBeans(bs => [b, ...bs])
+            navigate({ name: 'bean', id: b.id })
           }}
+          onDelete={id => { markDeleted(id); setBeans(bs => bs.filter(x => x.id !== id)) }}
         />
-      ) : null
-    }
-    return (
-      <BeansList
-        beans={beans}
-        onOpen={id => setBeanNav({ name: 'detail', id })}
-        onCreate={() => {
-          const b: BeanProfile = stamp({ id: uid(), name: '', createdAt: Date.now() })
-          setBeans(bs => [b, ...bs])
-          setBeanNav({ name: 'detail', id: b.id })
-        }}
-        onDelete={id => { markDeleted(id); setBeans(bs => bs.filter(x => x.id !== id)) }}
-      />
-    )
-  }
+      )
 
-  const cupContent = () => {
-    if (cup.name === 'session') {
-      const s = sessions.find(x => x.id === cup.id)
-      return s ? (
-        <CuppingSessionView
-          key={s.id}
-          session={s}
-          onBack={() => setCup({ name: 'list' })}
-          onChange={ns => setSessions(ss => ss.map(x => x.id === ns.id ? stamp(ns) : x))}
+      case 'bean': {
+        const b = beans.find(x => x.id === route.id)
+        return b ? (
+          <BeanView
+            key={b.id}
+            bean={b}
+            onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? stamp(nb) : x))}
+            onBack={() => navigate({ name: 'beans' })}
+            onMakeRecipe={r => {
+              setRecipes(rs => [stamp(r), ...rs])
+              navigate({ name: 'edit', id: r.id })
+            }}
+          />
+        ) : <NotFound to={{ name: 'beans' }} label="Зерно" />
+      }
+
+      case 'cupping': return (
+        <CuppingList
+          sessions={sessions}
+          onOpen={id => navigate({ name: 'session', id })}
+          onCreate={s => { setSessions(ss => [stamp(s), ...ss]); navigate({ name: 'session', id: s.id }) }}
+          onDelete={id => { markDeleted(id); setSessions(ss => ss.filter(x => x.id !== id)) }}
         />
-      ) : null
+      )
+
+      case 'session': {
+        const s = sessions.find(x => x.id === route.id)
+        return s ? (
+          <CuppingSessionView
+            key={s.id}
+            session={s}
+            onBack={() => navigate({ name: 'cupping' })}
+            onChange={ns => setSessions(ss => ss.map(x => x.id === ns.id ? stamp(ns) : x))}
+          />
+        ) : <NotFound to={{ name: 'cupping' }} label="Каппинги" />
+      }
+
+      case 'brew': return (
+        <div>
+          <div className="header">
+            <h1>BrewMate ☕</h1>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 14px' }}
+                onClick={() => navigate({ name: 'settings' })}>⚙️</button>
+              <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 18px' }}
+                onClick={() => navigate({ name: 'edit' })}>+</button>
+            </div>
+          </div>
+          {recipes.length === 0 && <div className="small">Пока пусто — создай первый рецепт ☕️</div>}
+          {recipes.map(r => (
+            <div className="card" key={r.id} onClick={() => navigate({ name: 'timer', id: r.id })}>
+              <div className="grow">
+                <div>{r.title}</div>
+                <div className="meta">{r.doseG} г · {r.waterG} г воды · {r.tempC}°C{r.grind ? ` · ${r.grind}` : ''}</div>
+              </div>
+              <button className={'heart' + (r.favorite ? ' on' : '')}
+                onClick={e => {
+                  e.stopPropagation()
+                  setRecipes(rs => rs.map(x => x.id === r.id ? stamp({ ...x, favorite: !x.favorite }) : x))
+                }}>
+                {r.favorite ? '♥' : '♡'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )
     }
-    return (
-      <CuppingList
-        sessions={sessions}
-        onOpen={id => setCup({ name: 'session', id })}
-        onCreate={s => { setSessions(ss => [stamp(s), ...ss]); setCup({ name: 'session', id: s.id }) }}
-        onDelete={id => { markDeleted(id); setSessions(ss => ss.filter(x => x.id !== id)) }}
-      />
-    )
   }
 
   return (
     <div>
-      {tab === 'brew' ? brewContent() : tab === 'bean' ? beanContent() : cupContent()}
+      {content()}
       <nav className="tabs">
-        <button className={tab === 'brew' ? 'on' : ''} onClick={() => setTab('brew')}>☕ Заваривание</button>
-        <button className={tab === 'bean' ? 'on' : ''} onClick={() => setTab('bean')}>🫘 Зерно</button>
-        <button className={tab === 'cup' ? 'on' : ''} onClick={() => setTab('cup')}>🧪 Каппинг</button>
+        <button className={tab === 'brew' ? 'on' : ''} onClick={() => navigate({ name: 'brew' })}>☕ Заваривание</button>
+        <button className={tab === 'bean' ? 'on' : ''} onClick={() => navigate({ name: 'beans' })}>🫘 Зерно</button>
+        <button className={tab === 'cup' ? 'on' : ''} onClick={() => navigate({ name: 'cupping' })}>🧪 Каппинг</button>
       </nav>
     </div>
   )
