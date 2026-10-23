@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { BeanProfile, CuppingSession, Recipe } from './types'
+import type { BeanProfile, BrewLog, CuppingSession, LogDraft, Recipe } from './types'
 import {
-  loadBeans, loadDeleted, loadRecipes, loadSessions,
-  saveBeans, saveDeleted, saveRecipes, saveSessions, uid,
+  loadBeans, loadDeleted, loadLogs, loadRecipes, loadSessions,
+  saveBeans, saveDeleted, saveLogs, saveRecipes, saveSessions, uid,
 } from './storage'
 import { stamp } from './sync/merge'
 import type { Tombstones } from './sync/merge'
@@ -13,6 +13,8 @@ import { CuppingSessionView } from './CuppingSession'
 import { BeansList } from './BeansList'
 import { BeanView } from './BeanView'
 import { SyncSettings } from './SyncSettings'
+import { JournalList } from './JournalList'
+import { LogView } from './LogView'
 import { loadSyncConfig } from './sync/sync'
 import { tabOf } from './route'
 import type { Route } from './route'
@@ -41,6 +43,9 @@ export default function App() {
   const [beans, setBeans] = useState<BeanProfile[]>(loadBeans)
   useEffect(() => saveBeans(beans), [beans])
 
+  const [logs, setLogs] = useState<BrewLog[]>(loadLogs)
+  useEffect(() => saveLogs(logs), [logs])
+
   /* метки удалений: без них синхронизация вернёт удалённое обратно */
   const [deleted, setDeleted] = useState<Tombstones>(loadDeleted)
   useEffect(() => saveDeleted(deleted), [deleted])
@@ -57,14 +62,30 @@ export default function App() {
     navigate({ name: 'brew' }, { replace: true })
   }
 
+  /* таймер → запись в журнал → экран записи (там оценка, зерно, заметки) */
+  const addLog = (d: LogDraft) => {
+    const now = Date.now()
+    const l: BrewLog = stamp({ ...d, id: uid(), startedAt: now - d.durationS * 1000, createdAt: now })
+    setLogs(ls => [l, ...ls])
+    navigate({ name: 'entry', id: l.id })
+  }
+  const delLog = (id: string) => {
+    markDeleted(id)
+    setLogs(ls => ls.filter(x => x.id !== id))
+    navigate({ name: 'journal' }, { replace: true })
+  }
+
   const content = () => {
     switch (route.name) {
       /* ⚙️ Данные и синхронизация — отдельный экран внутри вкладки «Заваривание» */
       case 'settings': return (
         <SyncSettings
           initial={loadSyncConfig()}
-          local={{ recipes, sessions, beans, deleted }}
-          onMerged={d => { setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans); setDeleted(d.deleted) }}
+          local={{ recipes, sessions, beans, logs, deleted }}
+          onMerged={d => {
+            setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans)
+            setLogs(d.logs); setDeleted(d.deleted)
+          }}
           onClose={() => goBack({ name: 'brew' })}
         />
       )
@@ -76,7 +97,7 @@ export default function App() {
             <button className="back" onClick={() => navigate({ name: 'brew' })}>← Рецепты</button>
             <h1>{r.title}</h1>
             <button className="chip" onClick={() => navigate({ name: 'edit', id: r.id })}>✏️ Изменить рецепт</button>
-            <BrewTimer key={r.id} recipe={r} />
+            <BrewTimer key={r.id} recipe={r} onLog={addLog} />
           </div>
         ) : <NotFound to={{ name: 'brew' }} label="Рецепты" />
       }
@@ -145,6 +166,26 @@ export default function App() {
         ) : <NotFound to={{ name: 'cupping' }} label="Каппинги" />
       }
 
+      case 'journal': return (
+        <JournalList logs={logs} onOpen={id => navigate({ name: 'entry', id })} />
+      )
+
+      case 'entry': {
+        const l = logs.find(x => x.id === route.id)
+        return l ? (
+          <LogView
+            key={l.id}
+            log={l}
+            beans={beans}
+            canRepeat={!!l.recipeId && recipes.some(r => r.id === l.recipeId)}
+            onChange={nl => setLogs(ls => ls.map(x => x.id === nl.id ? stamp(nl) : x))}
+            onBack={() => navigate({ name: 'journal' })}
+            onRepeat={() => l.recipeId && navigate({ name: 'timer', id: l.recipeId })}
+            onDelete={delLog}
+          />
+        ) : <NotFound to={{ name: 'journal' }} label="Журнал" />
+      }
+
       case 'brew': return (
         <div>
           <div className="header">
@@ -184,6 +225,7 @@ export default function App() {
         <button className={tab === 'brew' ? 'on' : ''} onClick={() => navigate({ name: 'brew' })}>☕ Заваривание</button>
         <button className={tab === 'bean' ? 'on' : ''} onClick={() => navigate({ name: 'beans' })}>🫘 Зерно</button>
         <button className={tab === 'cup' ? 'on' : ''} onClick={() => navigate({ name: 'cupping' })}>🧪 Каппинг</button>
+        <button className={tab === 'log' ? 'on' : ''} onClick={() => navigate({ name: 'journal' })}>📓 Журнал</button>
       </nav>
     </div>
   )

@@ -1,13 +1,32 @@
-import type { Recipe } from './types'
+import type { LogDraft, Recipe } from './types'
 import { fmt, useBrewTimer } from './useBrewTimer'
 import { ScaleChip } from './ScaleChip'
+import { finalWeight } from './brewlog/curve'
 
-export function BrewTimer({ recipe }: { recipe: Recipe }) {
+export function BrewTimer({ recipe, onLog }: { recipe: Recipe; onLog?: (d: LogDraft) => void }) {
   const {
     status, elapsed, total, stepIndex,
-    liveG, setLiveG,
+    liveG, setLiveG, getCurve,
     start, pause, resume, reset,
   } = useBrewTimer(recipe)
+
+  /* запись в журнал: рецепт копируется «снимком», кривая — только если были весы */
+  const logBrew = () => {
+    const curve = getCurve()
+    onLog?.({
+      recipeId: recipe.id,
+      title: recipe.title,
+      method: recipe.method,
+      doseG: recipe.doseG,
+      waterG: recipe.waterG,
+      tempC: recipe.tempC,
+      grind: recipe.grind,
+      steps: recipe.steps,
+      durationS: Math.round(elapsed),
+      finalG: finalWeight(curve),
+      curve: curve.length ? curve : undefined,
+    })
+  }
 
   const ends = recipe.steps.reduce<number[]>((acc, s) => [...acc, (acc.at(-1) ?? 0) + s.duration], [])
   const rows = recipe.steps.map((s, i) => ({ ...s, end: ends[i], i }))
@@ -54,11 +73,13 @@ export function BrewTimer({ recipe }: { recipe: Recipe }) {
       {status === 'run' && <button className="btn secondary" onClick={pause}>Пауза</button>}
       {status === 'pause' && <>
         <button className="btn" onClick={resume}>Продолжить</button>
+        {onLog && <button className="btn secondary" onClick={logBrew}>📓 Закончить и записать в журнал</button>}
         <button className="btn secondary" onClick={reset}>Сброс</button>
       </>}
       {status === 'done' && <>
         <div className="now"><div className="note">Готово ☕️</div></div>
-        <button className="btn" onClick={reset}>Ещё раз</button>
+        {onLog && <button className="btn" onClick={logBrew}>📓 Записать в журнал</button>}
+        <button className="btn secondary" onClick={reset}>Ещё раз</button>
       </>}
     </div>
   )
