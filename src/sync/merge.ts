@@ -1,4 +1,4 @@
-import type { BeanProfile, CuppingSession, Recipe } from '../types'
+import type { BeanProfile, BrewLog, CuppingSession, Recipe } from '../types'
 
 /* id → время удаления (мс). Нужны, чтобы удалённое не «воскресало» при синхронизации */
 export type Tombstones = Record<string, number>
@@ -7,12 +7,13 @@ export interface AppData {
   recipes: Recipe[]
   sessions: CuppingSession[]
   beans: BeanProfile[]
+  logs: BrewLog[]
   deleted: Tombstones
 }
 
 interface Item { id: string; createdAt?: number; updatedAt?: number }
 
-export const emptyData = (): AppData => ({ recipes: [], sessions: [], beans: [], deleted: {} })
+export const emptyData = (): AppData => ({ recipes: [], sessions: [], beans: [], logs: [], deleted: {} })
 
 /* пометить запись как изменённую сейчас */
 export const stamp = <T extends object>(x: T): T & { updatedAt: number } =>
@@ -40,6 +41,7 @@ export function sanitizeData(raw: unknown): AppData {
     recipes: cleanList<Recipe>(r.recipes),
     sessions: cleanList<CuppingSession>(r.sessions),
     beans: cleanList<BeanProfile>(r.beans),
+    logs: cleanList<BrewLog>(r.logs),
     deleted: cleanDeleted(r.deleted),
   }
 }
@@ -72,6 +74,7 @@ export function mergeData(local: AppData, remote: AppData): AppData {
     recipes: mergeList(local.recipes, remote.recipes, deleted),
     sessions: mergeList(local.sessions, remote.sessions, deleted),
     beans: mergeList(local.beans, remote.beans, deleted),
+    logs: mergeList(local.logs, remote.logs, deleted),
     deleted,
   }
 }

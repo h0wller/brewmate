@@ -67,6 +67,19 @@ describe('mergeData', () => {
     expect(m.recipes).toHaveLength(1)
   })
 
+  it('журнал завариваний сливается так же: свежая правка и удаления', () => {
+    const log = (id: string, updatedAt: number, notes: string) => ({
+      id, title: 'V60', method: 'v60', doseG: 15, waterG: 250, tempC: 93, steps: [],
+      startedAt: 1, durationS: 150, createdAt: 1, updatedAt, notes,
+    })
+    const m = mergeData(
+      data({ logs: [log('a', 5, 'локально'), log('b', 1, 'b')] }),
+      data({ logs: [log('a', 9, 'сервер'), log('c', 1, 'c')], deleted: { b: 3 } }),
+    )
+    expect(m.logs.map(l => l.id).sort()).toEqual(['a', 'c'])
+    expect(m.logs.find(l => l.id === 'a')?.notes).toBe('сервер')
+  })
+
   it('метки удалений объединяются по максимуму', () => {
     const m = mergeData(data({ deleted: { a: 5 } }), data({ deleted: { a: 9, b: 1 } }))
     expect(m.deleted).toEqual({ a: 9, b: 1 })
@@ -89,9 +102,10 @@ describe('sanitizeData', () => {
     expect(d.deleted).toEqual({ a: 1 })
   })
 
-  it('принимает старый формат сервера без deleted', () => {
+  it('принимает старый формат сервера без deleted и logs', () => {
     const d = sanitizeData({ recipes: [{ id: 'x' }], sessions: [], beans: [] })
     expect(d.deleted).toEqual({})
+    expect(d.logs).toEqual([])
     expect(d.recipes).toHaveLength(1)
   })
 })

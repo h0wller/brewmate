@@ -41,13 +41,13 @@ export function SyncSettings({ initial, local, onMerged, onClose }: {
     setMsg('')
     try {
       const incoming = sanitizeData(JSON.parse(await f.text()))
-      if (!incoming.recipes.length && !incoming.sessions.length && !incoming.beans.length) {
+      if (!incoming.recipes.length && !incoming.sessions.length && !incoming.beans.length && !incoming.logs.length) {
         throw new Error('в файле нет данных BrewMate')
       }
       onMerged(mergeData(local, incoming))
       setMsg(
         `✅ Импортировано: рецептов ${incoming.recipes.length}, зерна ${incoming.beans.length}, ` +
-        `каппингов ${incoming.sessions.length} (слито с текущими данными)`,
+        `каппингов ${incoming.sessions.length}, завариваний ${incoming.logs.length} (слито с текущими данными)`,
       )
     } catch (e) { setMsg('❌ Импорт: ' + (e as Error).message) }
   }
@@ -81,7 +81,7 @@ export function SyncSettings({ initial, local, onMerged, onClose }: {
         Сохранить настройки
       </button>
 
-      <div className="small">Резервная копия (файл JSON — рецепты, зерно, каппинги)</div>
+      <div className="small">Резервная копия (файл JSON — рецепты, зерно, каппинги, журнал)</div>
       <input ref={fileRef} type="file" accept="application/json,.json" hidden
         onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.currentTarget.value = '' }} />
       <button className="btn secondary" onClick={exportJson}>⬇️ Скачать копию</button>
