@@ -184,3 +184,6 @@ textarea {
   width: 100%; background: #2c2c31; border: 0; border-radius: 10px;
   color: #fff; padding: 10px 12px; font-size: 16px; margin-bottom: 8px;
 }
+
+/* таблица «план / факт» по шагам на экране записи */
+.steps.stats .w { width: auto; min-width: 64px; text-align: right; white-space: nowrap; }

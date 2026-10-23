@@ -6,7 +6,7 @@ import { finalWeight } from './brewlog/curve'
 export function BrewTimer({ recipe, onLog }: { recipe: Recipe; onLog?: (d: LogDraft) => void }) {
   const {
     status, elapsed, total, stepIndex,
-    liveG, setLiveG, getCurve,
+    liveG, setLiveG, flow, getCurve,
     start, pause, resume, reset,
   } = useBrewTimer(recipe)
 
@@ -31,6 +31,10 @@ export function BrewTimer({ recipe, onLog }: { recipe: Recipe; onLog?: (d: LogDr
   const ends = recipe.steps.reduce<number[]>((acc, s) => [...acc, (acc.at(-1) ?? 0) + s.duration], [])
   const rows = recipe.steps.map((s, i) => ({ ...s, end: ends[i], i }))
   const cur = rows[stepIndex]
+  /* план скорости вливания на текущем шаге, г/с */
+  const planRate = cur && cur.duration > 0
+    ? (cur.pourTo - (cur.i > 0 ? rows[cur.i - 1].pourTo : 0)) / cur.duration
+    : 0
 
   // прогресс по граммам, если подключены весы
   const progressPct = liveG !== null && cur && cur.pourTo > 0
@@ -51,6 +55,11 @@ export function BrewTimer({ recipe, onLog }: { recipe: Recipe; onLog?: (d: LogDr
           <div className="sub">
             долить до {cur.pourTo} г{liveG !== null ? ` · сейчас ${liveG.toFixed(1)} г` : ''} · до {fmt(cur.end)}
           </div>
+          {flow !== null && (
+            <div className="sub">
+              скорость {Math.max(0, flow).toFixed(1)} г/с{planRate > 0 ? ` · по плану ${planRate.toFixed(1)}` : ''}
+            </div>
+          )}
         </div>
       )}
 

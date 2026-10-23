@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Recipe, WeightSample } from './types'
-import { downsample, recordSample } from './brewlog/curve'
+import { downsample, flowRateAt, recordSample } from './brewlog/curve'
 
 export const fmt = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -28,6 +28,7 @@ export function useBrewTimer(recipe: Recipe) {
   const [status, setStatus] = useState<'idle' | 'run' | 'pause' | 'done'>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [liveG, setLiveGState] = useState<number | null>(null)
+  const [flow, setFlow] = useState<number | null>(null) // скорость вливания, г/с
   /* актуальный вес для таймера: интервал читает его из ref, а не из замыкания */
   const liveRef = useRef<number | null>(null)
   const samples = useRef<WeightSample[]>([])
@@ -54,7 +55,12 @@ export function useBrewTimer(recipe: Recipe) {
     if (status !== 'run') return
     const id = setInterval(() => {
       const e = base.current + (Date.now() - startAt.current) / 1000
-      if (liveRef.current !== null) recordSample(samples.current, Math.min(e, total), liveRef.current)
+      if (liveRef.current !== null) {
+        recordSample(samples.current, Math.min(e, total), liveRef.current)
+        setFlow(flowRateAt(samples.current, Math.min(e, total)))
+      } else {
+        setFlow(null)
+      }
       if (e >= total) {
         setElapsed(total)
         setStatus('done')
@@ -107,7 +113,7 @@ export function useBrewTimer(recipe: Recipe) {
 
   return {
     status, elapsed, total, stepIndex,
-    liveG, setLiveG,
+    liveG, setLiveG, flow,
     /* кривая веса за текущий пролив (пусто, если весов не было) */
     getCurve: () => downsample(samples.current),
     start, pause, resume, reset,

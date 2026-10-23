@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { chartBounds, chartPath, downsample, finalWeight, planPoints, recordSample } from './curve'
+import {
+  chartBounds, chartPath, downsample, finalWeight, flowRateAt, planPoints, recordSample, stepStats, weightAt,
+} from './curve'
 import type { WeightSample } from '../types'
 
 describe('recordSample', () => {
@@ -83,5 +85,68 @@ describe('chartBounds', () => {
   })
   it('пустые данные не ломают границы', () => {
     expect(chartBounds([], [], 0)).toEqual({ tMax: 0, gMax: 0 })
+  })
+})
+
+const ramp = (rate: number, from = 0, to = 10): WeightSample[] =>
+  Array.from({ length: to - from + 1 }, (_, i) => ({ t: from + i, g: rate * (from + i) }))
+
+describe('weightAt', () => {
+  const s: WeightSample[] = [{ t: 0, g: 0 }, { t: 10, g: 100 }]
+  it('интерполирует между отсчётами', () => {
+    expect(weightAt(s, 5)).toBe(50)
+    expect(weightAt(s, 2.5)).toBe(25)
+  })
+  it('за краями берёт крайние значения; без данных — undefined', () => {
+    expect(weightAt(s, -3)).toBe(0)
+    expect(weightAt(s, 99)).toBe(100)
+    expect(weightAt([], 5)).toBeUndefined()
+  })
+})
+
+describe('flowRateAt', () => {
+  it('равномерный налив 5 г/с даёт 5', () => {
+    expect(flowRateAt(ramp(5), 10)).toBeCloseTo(5)
+  })
+  it('вес стоит на месте — скорость 0', () => {
+    expect(flowRateAt(ramp(0), 10)).toBeCloseTo(0)
+  })
+  it('учитывает только окно: после остановки налива скорость падает до 0', () => {
+    const s = [...ramp(5, 0, 5), ...Array.from({ length: 6 }, (_, i) => ({ t: 6 + i, g: 25 }))]
+    expect(flowRateAt(s, 11, 3)).toBeCloseTo(0)
+  })
+  it('мало данных — null', () => {
+    expect(flowRateAt([], 10)).toBeNull()
+    expect(flowRateAt([{ t: 9, g: 1 }], 10)).toBeNull()
+    expect(flowRateAt([{ t: 9.6, g: 1 }, { t: 10, g: 2 }], 10)).toBeNull() // меньше 1 с
+  })
+  it('шум в пределах окна не даёт скачков (МНК, а не две точки)', () => {
+    const noisy = ramp(4).map((p, i) => ({ ...p, g: p.g + (i % 2 ? 0.4 : -0.4) }))
+    const f = flowRateAt(noisy, 10, 4)
+    expect(f !== null && Math.abs(f - 4) < 0.5).toBe(true)
+  })
+})
+
+describe('stepStats', () => {
+  const steps = [
+    { duration: 10, pourTo: 50, note: 'блюм' },
+    { duration: 20, pourTo: 50, note: 'пауза' },
+    { duration: 20, pourTo: 250, note: 'основной' },
+  ]
+  it('план: сколько воды и с какой скоростью на каждом шаге', () => {
+    const st = stepStats([], steps)
+    expect(st.map(x => x.planG)).toEqual([50, 0, 200])
+    expect(st.map(x => x.planRate)).toEqual([5, 0, 10])
+    expect(st.map(x => x.actualG)).toEqual([null, null, null])
+  })
+  it('факт по кривой: налили 50 за блюм, пауза, затем 190 вместо 200', () => {
+    const curve: WeightSample[] = [
+      { t: 0, g: 0 }, { t: 10, g: 50 }, { t: 30, g: 50 }, { t: 50, g: 240 },
+    ]
+    const st = stepStats(curve, steps)
+    expect(st[0].actualG).toBe(50)
+    expect(st[1].actualG).toBe(0)
+    expect(st[2].actualG).toBe(190)
+    expect(st[2].actualRate).toBeCloseTo(9.5)
   })
 })

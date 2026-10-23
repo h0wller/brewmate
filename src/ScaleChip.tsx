@@ -3,6 +3,7 @@ import { btSupported, connectScale, hex } from './bt/bt'
 import type { ScaleHandle } from './bt/bt'
 import { DRIVERS, pickDriver } from './bt/drivers'
 import type { ScaleDriver } from './bt/driver'
+import { downloadText } from './download'
 
 /* onWeight получает null, пока весы не подключены (или нет показаний) */
 export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void }) {
@@ -28,7 +29,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void 
     handle.current = null
   }, [])
 
-  const push = (line: string) => setLog(r => [...r.slice(-80), line])
+  const push = (line: string) => setLog(r => [...r.slice(-400), `${new Date().toISOString().slice(11, 23)} ${line}`])
 
   const send = async (bytes: number[], label: string) => {
     if (!handle.current?.write) return
@@ -123,6 +124,13 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void 
             <input value={cmdHex} onChange={e => setCmdHex(e.target.value)}
               placeholder="hex" style={{ flex: 1 }} />
             <button className="chip" onClick={sendManual}>Отпр.</button>
+          </div>
+          <div className="scaleRow" style={{ margin: '8px 0' }}>
+            <button className="chip" onClick={() => downloadText(
+              `scale-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`,
+              [`device: ${name}`, `driver: ${driver.label}`, ...log].join('\n'), 'text/plain')}>
+              ⬇️ Скачать лог
+            </button>
           </div>
           <div className="rawLog">
             <div>драйвер: {driver.label} · raw: {raw?.toFixed(1) ?? '—'} {unit} · net: {net?.toFixed(1) ?? '—'} {unit} · offset: {offset.toFixed(1)}</div>

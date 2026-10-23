@@ -2,6 +2,7 @@ import type { BeanProfile, BrewLog } from './types'
 import { CurveChart } from './CurveChart'
 import { fmtDate } from './brewlog/format'
 import { fmt } from './useBrewTimer'
+import { stepStats } from './brewlog/curve'
 
 export function LogView({ log, beans, canRepeat, onChange, onBack, onRepeat, onDelete }: {
   log: BrewLog
@@ -43,6 +44,27 @@ export function LogView({ log, beans, canRepeat, onChange, onBack, onRepeat, onD
       {log.curve && log.curve.length > 1
         ? <CurveChart curve={log.curve} steps={log.steps} durationS={log.durationS} />
         : <div className="small">Кривой нет: весы не были подключены.</div>}
+
+      {log.curve && log.curve.length > 1 && (
+        <>
+          <div className="small">Шаги: план → факт</div>
+          <ul className="steps stats">
+            {stepStats(log.curve, log.steps).map(st => (
+              <li key={st.index}>
+                <span className="t">{fmt(st.end)}</span>
+                <span className="n">{st.note || `Шаг ${st.index + 1}`}</span>
+                <span className="w">
+                  {st.actualG === null ? '—' : `${Math.round(st.actualG)}/${Math.round(st.planG)} г`}
+                </span>
+                <span className="w">
+                  {st.actualRate === null ? '' : `${Math.max(0, st.actualRate).toFixed(1)}/${st.planRate.toFixed(1)}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="small" style={{ marginTop: 0 }}>налито факт/план, г · скорость факт/план, г/с</div>
+        </>
+      )}
 
       <div className="small">Оценка</div>
       <div className="lotChips">
