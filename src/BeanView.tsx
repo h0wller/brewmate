@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { BeanProfile, BrewStep, Recipe } from './types'
+import type { BeanProfile, BrewStep, GrinderProfile, Recipe } from './types'
 import {
   LEVEL_LABEL, METHODS, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
@@ -8,6 +8,8 @@ import { askVision, buildPackagePrompt, fileToBase64, loadAIConfig } from './ai/
 import type { AIConfig } from './ai/client'
 import { AISettings } from './AISettings'
 import { uid } from './storage'
+import { SIZE_LABEL, isGrindSize, nudgeText } from './grinders/size'
+import { grindFor, settingFor } from './grinders/profile'
 
 const sanitizeSteps = (raw: any): BrewStep[] => {
   const arr = Array.isArray(raw) ? raw : []
@@ -29,8 +31,10 @@ const pickBean = (b: any, base: BeanProfile): BeanProfile => ({
   notes: typeof b?.notes === 'string' && b.notes ? b.notes : base.notes,
 })
 
-export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
+export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder }: {
   bean: BeanProfile
+  profile: GrinderProfile
+  onOpenGrinder: () => void
   onChange: (b: BeanProfile) => void
   onBack: () => void
   onMakeRecipe: (r: Recipe) => void
@@ -46,6 +50,7 @@ export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
 
   const set = (p: Partial<BeanProfile>) => onChange({ ...bean, ...p })
   const rec = recommend(bean, method)
+  const mySetting = settingFor(profile, rec.size)
   const days = daysSince(bean.roastDate)
 
   const onPhoto = async (f: File) => {
@@ -73,7 +78,9 @@ export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
         doseG: 15,
         waterG: Math.round(15 * (+r.ratio || rec.ratio)),
         tempC: Math.max(85, Math.min(98, +r.tempC || rec.temp)),
-        grind: typeof r.grind === 'string' ? r.grind : `Comandante ${rec.clicks} кликов`,
+        /* от AI берём только уровень крупности; настройку подставляем из калибровки пользователя,
+           чтобы модель не выдумывала клики для чужой кофемолки */
+        grind: grindFor(profile, isGrindSize(r.grindSize) ? r.grindSize : rec.size),
         steps: sanitizeSteps(r.steps),
         createdAt: Date.now(),
       })
@@ -159,12 +166,21 @@ export function BeanView({ bean, onChange, onBack, onMakeRecipe }: {
 
       <div className="card" style={{ display: 'block', cursor: 'default' }}>
         <div className="recBig">
-          <div><div className="recVal">{rec.clicks}</div><div className="small">кликов Comandante</div></div>
+          <div>
+            <div className={'recVal' + (mySetting ? '' : ' sm')}>{mySetting ?? SIZE_LABEL[rec.size]}</div>
+            <div className="small">{mySetting ? SIZE_LABEL[rec.size] : 'помол'}{rec.nudge ? ` · ${nudgeText(rec.nudge)}` : ''}</div>
+          </div>
           <div><div className="recVal">{rec.temp}°C</div><div className="small">вода</div></div>
           <div><div className="recVal">1:{rec.ratio}</div><div className="small">пропорция</div></div>
         </div>
+        {!mySetting && (
+          <div className="tip">
+            {profile.grinder ? 'Для этого уровня нет твоей настройки' : 'Кофемолка не выбрана'} —{' '}
+            <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={onOpenGrinder}>указать</span>
+          </div>
+        )}
         {rec.tips.map((t, i) => <div className="tip" key={i}>• {t}</div>)}
-        <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec))}>
+        <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size)))}>
           Сделать рецепт → в таймер
         </button>
       </div>

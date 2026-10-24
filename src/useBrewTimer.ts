@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Recipe } from './types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Recipe, WeightSample } from './types'
+import { downsample, flowRateAt, recordSample } from './brewlog/curve'
 
 export const fmt = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -26,7 +27,15 @@ export function beep(times = 1) {
 export function useBrewTimer(recipe: Recipe) {
   const [status, setStatus] = useState<'idle' | 'run' | 'pause' | 'done'>('idle')
   const [elapsed, setElapsed] = useState(0)
-  const [liveG, setLiveG] = useState<number | null>(null)
+  const [liveG, setLiveGState] = useState<number | null>(null)
+  const [flow, setFlow] = useState<number | null>(null) // скорость вливания, г/с
+  /* актуальный вес для таймера: интервал читает его из ref, а не из замыкания */
+  const liveRef = useRef<number | null>(null)
+  const samples = useRef<WeightSample[]>([])
+  const setLiveG = useCallback((g: number | null) => {
+    liveRef.current = g
+    setLiveGState(g)
+  }, [])
   const base = useRef(0)
   const startAt = useRef(0)
   const wake = useRef<any>(null)
@@ -34,10 +43,10 @@ export function useBrewTimer(recipe: Recipe) {
 
   const total = recipe.steps.reduce((s, x) => s + x.duration, 0)
 
-  const bounds = useMemo(() => {
-    let a = 0
-    return recipe.steps.map(st => (a += st.duration))
-  }, [recipe])
+  const bounds = useMemo(
+    () => recipe.steps.reduce<number[]>((acc, st) => [...acc, (acc.at(-1) ?? 0) + st.duration], []),
+    [recipe],
+  )
 
   const idx = bounds.findIndex(b => elapsed < b)
   const stepIndex = idx === -1 ? bounds.length - 1 : idx
@@ -46,6 +55,12 @@ export function useBrewTimer(recipe: Recipe) {
     if (status !== 'run') return
     const id = setInterval(() => {
       const e = base.current + (Date.now() - startAt.current) / 1000
+      if (liveRef.current !== null) {
+        recordSample(samples.current, Math.min(e, total), liveRef.current)
+        setFlow(flowRateAt(samples.current, Math.min(e, total)))
+      } else {
+        setFlow(null)
+      }
       if (e >= total) {
         setElapsed(total)
         setStatus('done')
@@ -67,6 +82,7 @@ export function useBrewTimer(recipe: Recipe) {
 
   const start = async () => {
     base.current = 0
+    samples.current = []
     setElapsed(0)
     prevStep.current = -1
     startAt.current = Date.now()
@@ -89,6 +105,7 @@ export function useBrewTimer(recipe: Recipe) {
 
   const reset = () => {
     base.current = 0
+    samples.current = []
     setElapsed(0)
     setStatus('idle')
     wake.current?.release?.()
@@ -96,7 +113,9 @@ export function useBrewTimer(recipe: Recipe) {
 
   return {
     status, elapsed, total, stepIndex,
-    liveG, setLiveG,
+    liveG, setLiveG, flow,
+    /* кривая веса за текущий пролив (пусто, если весов не было) */
+    getCurve: () => downsample(samples.current),
     start, pause, resume, reset,
   }
 }

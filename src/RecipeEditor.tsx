@@ -1,33 +1,51 @@
 import { useState } from 'react'
-import type { BrewStep, Recipe } from './types'
+import type { BrewStep, Grind, GrinderProfile, Recipe } from './types'
 import { uid } from './storage'
+import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
+import type { GrindSize } from './grinders/size'
+import { normalizeGrind } from './grinders/grind'
+import { settingFor } from './grinders/profile'
 
 export function RecipeEditor({
   initial,
+  profile,
   onSave,
   onCancel,
   onDelete,
 }: {
   initial?: Recipe
+  profile: GrinderProfile
   onSave: (r: Recipe) => void
   onCancel: () => void
   onDelete?: (id: string) => void
 }) {
+  /* ленивая инициализация: новый id и время считаются один раз, а не на каждый рендер */
   const [r, setR] = useState<Recipe>(
-    initial ?? {
+    () => initial ?? {
       id: uid(),
       title: '',
       method: 'v60',
       doseG: 15,
       waterG: 250,
       tempC: 92,
-      grind: '',
       steps: [{ duration: 45, pourTo: 60, note: 'блюм' }],
       createdAt: Date.now(),
     }
   )
 
   const set = (p: Partial<Recipe>) => setR({ ...r, ...p })
+
+  const grind: Grind = r.grind ?? {}
+
+  /* выбор уровня: если настройка не вводилась руками (пусто или взята из калибровки
+     прежнего уровня) — подставляем настройку пользователя для нового уровня */
+  const pickSize = (size: GrindSize | undefined) => {
+    const prevCal = grind.size ? settingFor(profile, grind.size) : undefined
+    const auto = !grind.setting || grind.setting === prevCal
+    const next: Grind = { ...grind, size }
+    if (auto) next.setting = size ? settingFor(profile, size) : undefined
+    set({ grind: next })
+  }
 
   const setStep = (i: number, p: Partial<BrewStep>) =>
     set({ steps: r.steps.map((s, j) => (j === i ? { ...s, ...p } : s)) })
@@ -38,7 +56,9 @@ export function RecipeEditor({
       alert('Нужны название и хотя бы один шаг')
       return
     }
-    onSave({ ...r, title: r.title.trim(), steps })
+    /* кофемолка рецепта: уже указанная, иначе «моя» из профиля */
+    const finalGrind = normalizeGrind({ ...r.grind, grinder: r.grind?.grinder ?? profile.grinder })
+    onSave({ ...r, title: r.title.trim(), steps, grind: finalGrind })
   }
 
   return (
@@ -66,11 +86,18 @@ export function RecipeEditor({
           onChange={(e) => set({ tempC: +e.target.value })} />
       </div>
 
+      <div className="small">Помол</div>
+      <div className="lotChips">
+        {GRIND_SIZES.map(size => (
+          <button key={size} className={'chip' + (grind.size === size ? ' on' : '')}
+            onClick={() => pickSize(grind.size === size ? undefined : size)}>{SIZE_LABEL[size]}</button>
+        ))}
+      </div>
       <div className="row">
-        <label>Помол</label>
-        <input value={r.grind ?? ''}
-          onChange={(e) => set({ grind: e.target.value })}
-          placeholder="Comandante 24 клика" />
+        <label>Настройка</label>
+        <input value={grind.setting ?? ''}
+          onChange={(e) => set({ grind: { ...grind, setting: e.target.value } })}
+          placeholder={profile.grinder ? 'на твоей кофемолке, напр. 22 клика' : 'напр. 22 клика'} />
       </div>
 
       <div className="small">
