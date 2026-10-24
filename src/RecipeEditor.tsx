@@ -5,6 +5,8 @@ import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
 import type { GrindSize } from './grinders/size'
 import { normalizeGrind } from './grinders/grind'
 import { settingFor } from './grinders/profile'
+import { GrinderConverter } from './GrinderConverter'
+import { scaleStepsWater } from './beans/engine'
 
 export function RecipeEditor({
   initial,
@@ -33,7 +35,50 @@ export function RecipeEditor({
     }
   )
 
-  const set = (p: Partial<Recipe>) => setR({ ...r, ...p })
+  const [errorMsg, setErrorMsg] = useState('')
+  const [showConverter, setShowConverter] = useState(false)
+
+  const set = (p: Partial<Recipe>) => {
+    setErrorMsg('')
+    setR({ ...r, ...p })
+  }
+
+  /* Текущая пропорция (например, 16.7 для 60 г и 1000 г) */
+  const currentRatio = r.doseG > 0 && r.waterG > 0
+    ? Math.round((r.waterG / r.doseG) * 10) / 10
+    : 16
+
+  /* Изменение дозы кофе → сохраняет текущий brew ratio, пересчитывает воду и все шаги */
+  const onDoseChange = (newDose: number) => {
+    if (newDose <= 0) {
+      set({ doseG: newDose })
+      return
+    }
+    const newWater = Math.round(newDose * currentRatio)
+    set({
+      doseG: newDose,
+      waterG: newWater,
+      steps: scaleStepsWater(r.steps, r.waterG, newWater),
+    })
+  }
+
+  /* Изменение воды → пересчитывает пропорцию и масштабирует все шаги */
+  const onWaterChange = (newWater: number) => {
+    set({
+      waterG: newWater,
+      steps: scaleStepsWater(r.steps, r.waterG, newWater),
+    })
+  }
+
+  /* Изменение пропорции 1:X → пересчитывает воду от текущей дозы и масштабирует все шаги */
+  const onRatioChange = (newRatio: number) => {
+    if (newRatio <= 0 || r.doseG <= 0) return
+    const newWater = Math.round(r.doseG * newRatio)
+    set({
+      waterG: newWater,
+      steps: scaleStepsWater(r.steps, r.waterG, newWater),
+    })
+  }
 
   const grind: Grind = r.grind ?? {}
 
@@ -53,7 +98,7 @@ export function RecipeEditor({
   const save = () => {
     const steps = r.steps.filter((s) => s.duration > 0)
     if (!r.title.trim() || !steps.length) {
-      alert('Нужны название и хотя бы один шаг')
+      setErrorMsg('Нужны название и хотя бы один шаг')
       return
     }
     /* кофемолка рецепта: уже указанная, иначе «моя» из профиля */
@@ -74,15 +119,18 @@ export function RecipeEditor({
         />
       </div>
 
-      <div className="row">
+      <div className="row" style={{ flexWrap: 'wrap' }}>
         <label>Кофе, г</label>
-        <input className="num" type="number" value={r.doseG}
-          onChange={(e) => set({ doseG: +e.target.value })} />
+        <input className="num" type="number" min={1} step="any" value={r.doseG || ''}
+          onChange={(e) => onDoseChange(+e.target.value)} />
+        <label>1 :</label>
+        <input className="num" type="number" min={1} max={30} step="0.5" value={currentRatio || ''}
+          onChange={(e) => onRatioChange(+e.target.value)} />
         <label>Вода, г</label>
-        <input className="num" type="number" value={r.waterG}
-          onChange={(e) => set({ waterG: +e.target.value })} />
+        <input className="num" type="number" min={1} step="any" value={r.waterG || ''}
+          onChange={(e) => onWaterChange(+e.target.value)} />
         <label>t°, C</label>
-        <input className="num" type="number" value={r.tempC}
+        <input className="num" type="number" min={50} max={100} value={r.tempC || ''}
           onChange={(e) => set({ tempC: +e.target.value })} />
       </div>
 
@@ -99,6 +147,38 @@ export function RecipeEditor({
           onChange={(e) => set({ grind: { ...grind, setting: e.target.value } })}
           placeholder={profile.grinder ? 'на твоей кофемолке, напр. 22 клика' : 'напр. 22 клика'} />
       </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <button
+          type="button"
+          className="chip"
+          style={{ background: '#2c2c31', color: '#4b8ef1', fontSize: 13, padding: '5px 12px' }}
+          onClick={() => setShowConverter(s => !s)}
+        >
+          {showConverter ? '▲ Скрыть конвертер помола' : '🔄 Перевести из другой кофемолки'}
+        </button>
+      </div>
+
+      {showConverter && (
+        <div style={{ marginBottom: 12 }}>
+          <GrinderConverter
+            defaultFrom="comandante-c40"
+            defaultTo={grind.grinder?.id ?? profile.grinder?.id}
+            targetRedClix={profile.redClix}
+            onApply={(setting, targetGId) => {
+              set({
+                grind: {
+                  ...grind,
+                  setting,
+                  grinder: targetGId ? { id: targetGId } : grind.grinder,
+                },
+              })
+              setShowConverter(false)
+            }}
+            onClose={() => setShowConverter(false)}
+          />
+        </div>
+      )}
 
       <div className="small">
         Шаги: длительность (сек) · суммарный вес (г) · заметка
@@ -134,6 +214,12 @@ export function RecipeEditor({
         }>
         + Шаг
       </button>
+
+      {errorMsg && (
+        <div className="small" style={{ color: '#ff6961', margin: '8px 0' }}>
+          {errorMsg}
+        </div>
+      )}
 
       <button className="btn" onClick={save}>Сохранить</button>
 

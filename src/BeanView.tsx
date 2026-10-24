@@ -1,15 +1,16 @@
 import { useRef, useState } from 'react'
 import type { BeanProfile, BrewStep, GrinderProfile, Recipe } from './types'
 import {
-  LEVEL_LABEL, METHODS, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
+  LEVEL_LABEL, METHODS, WATER_PROFILES, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
-import type { MethodKey, RoastLevel } from './beans/engine'
+import type { MethodKey, RoastLevel, WaterKey } from './beans/engine'
 import { askVision, buildPackagePrompt, fileToBase64, loadAIConfig } from './ai/client'
 import type { AIConfig } from './ai/client'
 import { AISettings } from './AISettings'
 import { uid } from './storage'
-import { SIZE_LABEL, isGrindSize, nudgeText } from './grinders/size'
-import { grindFor, settingFor } from './grinders/profile'
+import { SIZE_LABEL, GRIND_SIZES, isGrindSize, nudgeText } from './grinders/size'
+import { grindFor, smartSettingFor } from './grinders/profile'
+import { findGrinder } from './grinders/catalog'
 
 const sanitizeSteps = (raw: any): BrewStep[] => {
   const arr = Array.isArray(raw) ? raw : []
@@ -40,6 +41,8 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   onMakeRecipe: (r: Recipe) => void
 }) {
   const [method, setMethod] = useState<MethodKey>('v60')
+  const [doseG, setDoseG] = useState(15)
+  const [water, setWater] = useState<WaterKey>('balanced')
   const [busy, setBusy] = useState(false)
   const [busyAI, setBusyAI] = useState(false)
   const [err, setErr] = useState('')
@@ -49,8 +52,11 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   const pkgRef = useRef<HTMLInputElement>(null)
 
   const set = (p: Partial<BeanProfile>) => onChange({ ...bean, ...p })
-  const rec = recommend(bean, method)
-  const mySetting = settingFor(profile, rec.size)
+  const rec = recommend(bean, method, water, doseG)
+  const mySetting = smartSettingFor(profile, rec.size, rec.coarseness)
+  const grinderName = profile.grinder
+    ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id)
+    : null
   const days = daysSince(bean.roastDate)
 
   const onPhoto = async (f: File) => {
@@ -67,20 +73,25 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
     setBusyAI(true); setErr('')
     try {
       const img = await fileToBase64(f)
-      const out = await askVision(aiCfg, img, buildPackagePrompt(METHODS[method].label))
+      const prompt = buildPackagePrompt(METHODS[method].label, WATER_PROFILES[water].label)
+      const out = await askVision(aiCfg, img, prompt)
       const nb = pickBean(out.bean, bean)
       onChange(nb)
       const r = out.recipe ?? {}
+      /* Считаем точный coarseness для распознанного зерна, чтобы клики учитывали обжарку/обработку/воду */
+      const nbRec = recommend(nb, method, water, doseG)
+      const aiSize = isGrindSize(r.grindSize) ? r.grindSize : nbRec.size
+      const aiCoarseness = isGrindSize(r.grindSize) ? GRIND_SIZES.indexOf(r.grindSize) + nbRec.nudge * 0.35 : nbRec.coarseness
+      const recipeDose = +r.doseG || doseG
+      const recipeRatio = +r.ratio || nbRec.ratio
       onMakeRecipe({
         id: uid(),
         title: r.title || `${nb.name || 'Зерно'} · AI · ${METHODS[method].label}`,
         method,
-        doseG: 15,
-        waterG: Math.round(15 * (+r.ratio || rec.ratio)),
-        tempC: Math.max(85, Math.min(98, +r.tempC || rec.temp)),
-        /* от AI берём только уровень крупности; настройку подставляем из калибровки пользователя,
-           чтобы модель не выдумывала клики для чужой кофемолки */
-        grind: grindFor(profile, isGrindSize(r.grindSize) ? r.grindSize : rec.size),
+        doseG: recipeDose,
+        waterG: Math.round(recipeDose * recipeRatio),
+        tempC: Math.max(85, Math.min(98, +r.tempC || nbRec.temp)),
+        grind: grindFor(profile, aiSize, aiCoarseness),
         steps: sanitizeSteps(r.steps),
         createdAt: Date.now(),
       })
@@ -111,12 +122,21 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
       {days !== null && <div className="small">Обжарке: {days} дн.</div>}
 
       <div className="card" style={{ display: 'block', cursor: 'default' }}>
-        <div className="small" style={{ margin: '0 0 8px' }}>Фото зерна — на белом фоне при дневном свете</div>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden
-          onChange={e => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.currentTarget.value = '' }} />
-        <button className="btn secondary" onClick={() => fileRef.current?.click()}>
-          {busy ? 'Анализирую…' : '📷 Сфоткать зерно'}
-        </button>
+        <div className="small" style={{ margin: '0 0 8px' }}>1. Фото зерна или пачки</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden
+            onChange={e => { const f = e.target.files?.[0]; if (f) onPhoto(f); e.currentTarget.value = '' }} />
+          <button className="btn secondary" style={{ marginTop: 0 }} onClick={() => fileRef.current?.click()}>
+            {busy ? 'Анализирую…' : '📷 Фото зерна'}
+          </button>
+
+          <input ref={pkgRef} type="file" accept="image/*" capture="environment" hidden
+            onChange={e => { const f = e.target.files?.[0]; if (f) onPackage(f); e.currentTarget.value = '' }} />
+          <button className="btn" style={{ marginTop: 0 }} onClick={() => aiCfg ? pkgRef.current?.click() : setShowSettings(true)}>
+            {busyAI ? '🤖 Думаю…' : '🤖 Фото пачки (AI)'}
+          </button>
+        </div>
+
         {bean.agtron !== undefined && (
           <div className="row" style={{ marginTop: 10 }}>
             {bean.photoColor && <span className="swatch" style={{ background: bean.photoColor }} />}
@@ -124,38 +144,44 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
           </div>
         )}
         <div className="row" style={{ marginTop: 10 }}>
-          <label>Уровень</label>
+          <label>Обжарка</label>
           {(['light', 'medium', 'dark'] as RoastLevel[]).map(l => (
             <button key={l} className={'chip' + (bean.roastLevel === l ? ' on' : '')}
               onClick={() => set({ roastLevel: l })}>{LEVEL_LABEL[l]}</button>
           ))}
         </div>
+        <div className="small" style={{ margin: '6px 0 0' }}>
+          {aiCfg ? `AI: ${aiCfg.provider} · ${aiCfg.model}` : 'AI для фото пачки не настроен'} ·{' '}
+          <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={() => setShowSettings(s => !s)}>
+            {showSettings ? 'скрыть' : 'настроить AI'}
+          </span>
+        </div>
       </div>
 
-      <div className="small">AI</div>
-      {showSettings ? (
+      {showSettings && (
         <AISettings
           initial={aiCfg}
           onDone={c => { setAiCfg(c); setShowSettings(false) }}
           onCancel={() => setShowSettings(false)}
         />
-      ) : (
-        <div className="card" style={{ display: 'block', cursor: 'default' }}>
-          <input ref={pkgRef} type="file" accept="image/*" capture="environment" hidden
-            onChange={e => { const f = e.target.files?.[0]; if (f) onPackage(f); e.currentTarget.value = '' }} />
-          <button className="btn" onClick={() => aiCfg ? pkgRef.current?.click() : setShowSettings(true)}>
-            {busyAI ? '🤖 Думаю…' : '🤖 Сфоткать пачку → AI-рецепт'}
-          </button>
-          <div className="small" style={{ margin: '8px 0 0' }}>
-            {aiCfg ? `${aiCfg.provider} · ${aiCfg.model}` : 'AI не настроен'} ·{' '}
-            <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={() => setShowSettings(true)}>настроить</span>
-          </div>
-        </div>
       )}
 
       {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
 
-      <div className="small">Метод</div>
+      <div className="small">2. Кофемолка</div>
+      <div className="card" onClick={onOpenGrinder}>
+        <div className="grow">
+          <div>🔧 {grinderName ?? 'Выбрать кофемолку'}</div>
+          <div className="meta">
+            {grinderName
+              ? `Помол пересчитывается под ${grinderName}`
+              : 'Нажми, чтобы выбрать модель из каталога (Comandante, 1Zpresso, Timemore и др.)'}
+          </div>
+        </div>
+        <span style={{ color: '#4b8ef1', fontSize: 14 }}>изменить →</span>
+      </div>
+
+      <div className="small">3. Метод заваривания</div>
       <div className="lotChips">
         {(Object.keys(METHODS) as MethodKey[]).map(m => (
           <button key={m} className={'chip' + (method === m ? ' on' : '')} onClick={() => setMethod(m)}>
@@ -164,23 +190,57 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
         ))}
       </div>
 
-      <div className="card" style={{ display: 'block', cursor: 'default' }}>
+      <div className="small">4. Доза кофе</div>
+      <div className="lotChips" style={{ alignItems: 'center' }}>
+        {[15, 18, 30, 60].map(d => (
+          <button key={d} className={'chip' + (doseG === d ? ' on' : '')} onClick={() => setDoseG(d)}>
+            {d} г
+          </button>
+        ))}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+          <input
+            className="num"
+            type="number"
+            min={1}
+            max={500}
+            value={doseG || ''}
+            onChange={e => setDoseG(Math.max(1, +e.target.value))}
+            style={{ width: 68, padding: '6px 8px', fontSize: 14 }}
+          />
+          <span style={{ fontSize: 13, color: '#98989f' }}>г</span>
+        </div>
+      </div>
+
+      <div className="small">5. Вода (по желанию)</div>
+      <div className="lotChips">
+        {(Object.keys(WATER_PROFILES) as WaterKey[]).map(w => (
+          <button key={w} className={'chip' + (water === w ? ' on' : '')} onClick={() => setWater(w)}>
+            {WATER_PROFILES[w].label}
+          </button>
+        ))}
+      </div>
+      <div className="small" style={{ marginTop: 0 }}>{WATER_PROFILES[water].sub}</div>
+
+      <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
         <div className="recBig">
           <div>
             <div className={'recVal' + (mySetting ? '' : ' sm')}>{mySetting ?? SIZE_LABEL[rec.size]}</div>
-            <div className="small">{mySetting ? SIZE_LABEL[rec.size] : 'помол'}{rec.nudge ? ` · ${nudgeText(rec.nudge)}` : ''}</div>
+            <div className="small">
+              {mySetting ? `${grinderName ?? 'помол'} · ${SIZE_LABEL[rec.size]}` : 'помол'}
+              {rec.nudge ? ` (${nudgeText(rec.nudge)})` : ''}
+            </div>
           </div>
           <div><div className="recVal">{rec.temp}°C</div><div className="small">вода</div></div>
-          <div><div className="recVal">1:{rec.ratio}</div><div className="small">пропорция</div></div>
+          <div><div className="recVal">{Math.round(doseG * rec.ratio)} г</div><div className="small">{doseG} г · 1:{rec.ratio}</div></div>
         </div>
         {!mySetting && (
           <div className="tip">
-            {profile.grinder ? 'Для этого уровня нет твоей настройки' : 'Кофемолка не выбрана'} —{' '}
+            {profile.grinder ? 'Для своей кофемолки можно указать клики' : 'Выбери кофемолку для расчёта кликов'} —{' '}
             <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={onOpenGrinder}>указать</span>
           </div>
         )}
         {rec.tips.map((t, i) => <div className="tip" key={i}>• {t}</div>)}
-        <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size)))}>
+        <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness), doseG))}>
           Сделать рецепт → в таймер
         </button>
       </div>

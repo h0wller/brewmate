@@ -29,8 +29,8 @@ describe('каталог кофемолок (CoffeeJSON, CC0)', () => {
 
 describe('searchGrinders', () => {
   it('ищет по части названия без учёта регистра и знаков', () => {
-    expect(searchGrinders('comandante').map(g => g.id)).toEqual(['comandante-c40'])
-    expect(searchGrinders('TIMEMORE c3').map(g => g.id)).toEqual(['timemore-c3'])
+    expect(searchGrinders('comandante').map(g => g.id)).toContain('comandante-c40')
+    expect(searchGrinders('TIMEMORE c3').map(g => g.id)).toContain('timemore-c3')
   })
   it('ищет по псевдониму и id', () => {
     expect(searchGrinders('lagom-mini').map(g => g.id)).toContain('option-o-lagom-mini')

@@ -1,0 +1,7 @@
+{
+  "name": "BrewMate",
+  "description": "Рецепты и таймер кофе, каппинг SCA/CoE, скан зерна и AI-рецепты",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

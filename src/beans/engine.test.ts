@@ -76,6 +76,31 @@ describe('recommend', () => {
     expect([r.size, r.nudge, r.temp, r.ratio]).toEqual(['coarse', 1, 92, 15])
   })
 
+  it('анаэробная ферментация: помол крупнее и прохладнее', () => {
+    const r = recommend(bean({ process: 'anaerobic' }), 'v60')
+    expect(r.temp).toBe(91)
+    expect(r.nudge).toBe(1)
+    expect(r.tips.some(t => t.includes('Анаэробная'))).toBe(true)
+  })
+
+  it('мягкая вода: тоньше помол, горячее, плотнее пропорция', () => {
+    const r = recommend(bean(), 'v60', 'soft')
+    expect(r.temp).toBe(94)
+    expect(r.ratio).toBe(15.5)
+    expect(r.tips.some(t => t.includes('Мягкая вода'))).toBe(true)
+  })
+
+  it('жёсткая вода: прохладнее и помол крупнее', () => {
+    const r = recommend(bean(), 'v60', 'hard')
+    expect(r.temp).toBe(91)
+    expect(r.tips.some(t => t.includes('Жёсткая вода'))).toBe(true)
+  })
+
+  it('крупная доза (>= 40 г): помол чуть крупнее', () => {
+    const r = recommend(bean(), 'drip', 'balanced', 60)
+    expect(r.tips.some(t => t.includes('Большая порция (60 г)'))).toBe(true)
+  })
+
   it('крупность не выходит за шкалу', () => {
     const r = recommend(bean({ roastLevel: 'dark', process: 'natural', roastDate: '2026-10-21' }), 'french')
     expect(r.coarseness <= 6 && r.coarseness >= 0).toBe(true)
