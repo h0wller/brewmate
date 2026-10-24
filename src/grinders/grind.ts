@@ -27,8 +27,11 @@ export function normalizeGrind(v: unknown): Grind | undefined {
 }
 
 /* Привести поле grind у записи (рецепт, запись журнала) к актуальному виду */
-export const migrateGrind = <T extends { grind?: unknown }>(x: T): T =>
-  x.grind === undefined ? x : { ...x, grind: normalizeGrind(x.grind) }
+/* принимает любой объект: у записи без поля grind возвращает её же */
+export const migrateGrind = <T extends object>(x: T): T =>
+  (x as { grind?: unknown }).grind === undefined
+    ? x
+    : { ...x, grind: normalizeGrind((x as { grind?: unknown }).grind) }
 
 export const grinderLabel = (g: Grind | undefined): string | undefined =>
   g?.grinder ? (findGrinder(g.grinder.id)?.label ?? g.grinder.label ?? g.grinder.id) : undefined
