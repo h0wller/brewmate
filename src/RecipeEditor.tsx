@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { BrewStep, Grind, GrinderProfile, Recipe } from './types'
 import { uid } from './storage'
 import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
 import type { GrindSize } from './grinders/size'
 import { normalizeGrind } from './grinders/grind'
 import { settingFor } from './grinders/profile'
+import { fromDose, fromWater, ratioOf } from './recipeScale'
+import type { Base } from './recipeScale'
 
 export function RecipeEditor({
   initial,
@@ -35,6 +37,36 @@ export function RecipeEditor({
 
   const set = (p: Partial<Recipe>) => setR({ ...r, ...p })
 
+  /* Пропорция воды к кофе. Включена по умолчанию: меняешь кофе — вода пересчитывается по ней
+     (и шаги вместе с водой), меняешь воду — пересчитывается кофе. 🔓 — править числа независимо. */
+  const [locked, setLocked] = useState(true)
+  const [lockedRatio, setLockedRatio] = useState(() => ratioOf(r.doseG, r.waterG) ?? 16)
+  const ratio = locked ? lockedRatio : ratioOf(r.doseG, r.waterG)
+  /* снимок воды и шагов до правок: пересчёт идёт от него, чтобы не копить округление */
+  const baseRef = useRef<Base>({ water: r.waterG, steps: r.steps })
+  const rebase = (next: Recipe) => { baseRef.current = { water: next.waterG, steps: next.steps } }
+  const update = (next: Recipe, rebaseToo = true) => { setR(next); if (rebaseToo) rebase(next) }
+
+  const setDose = (doseG: number) => {
+    if (locked && doseG > 0 && lockedRatio > 0) setR({ ...r, ...fromDose(baseRef.current, lockedRatio, doseG) })
+    else update({ ...r, doseG })
+  }
+  const setWater = (waterG: number) => {
+    if (locked && waterG > 0 && lockedRatio > 0) setR({ ...r, ...fromWater(baseRef.current, lockedRatio, waterG) })
+    else update({ ...r, waterG })
+  }
+  const setRatio = (x: number) => {
+    if (!(x > 0)) return
+    setLockedRatio(x)
+    setLocked(true)
+    if (r.doseG > 0) setR({ ...r, ...fromDose(baseRef.current, x, r.doseG) })
+  }
+  const toggleLock = () => {
+    if (!locked) setLockedRatio(ratioOf(r.doseG, r.waterG) ?? lockedRatio)
+    rebase(r)
+    setLocked(!locked)
+  }
+
   const grind: Grind = r.grind ?? {}
 
   /* выбор уровня: если настройка не вводилась руками (пусто или взята из калибровки
@@ -48,7 +80,7 @@ export function RecipeEditor({
   }
 
   const setStep = (i: number, p: Partial<BrewStep>) =>
-    set({ steps: r.steps.map((s, j) => (j === i ? { ...s, ...p } : s)) })
+    update({ ...r, steps: r.steps.map((s, j) => (j === i ? { ...s, ...p } : s)) })
 
   const save = () => {
     const steps = r.steps.filter((s) => s.duration > 0)
@@ -77,13 +109,23 @@ export function RecipeEditor({
       <div className="row">
         <label>Кофе, г</label>
         <input className="num" type="number" value={r.doseG}
-          onChange={(e) => set({ doseG: +e.target.value })} />
+          onChange={(e) => setDose(+e.target.value)} />
         <label>Вода, г</label>
         <input className="num" type="number" value={r.waterG}
-          onChange={(e) => set({ waterG: +e.target.value })} />
+          onChange={(e) => setWater(+e.target.value)} />
         <label>t°, C</label>
         <input className="num" type="number" value={r.tempC}
           onChange={(e) => set({ tempC: +e.target.value })} />
+      </div>
+
+      <div className="row">
+        <label>Пропорция 1:</label>
+        <input className="num" type="number" step="0.1"
+          value={ratio === undefined ? '' : Math.round(ratio * 10) / 10}
+          onChange={(e) => setRatio(+e.target.value)} />
+        <button className={'chip' + (locked ? ' on' : '')} onClick={toggleLock}>
+          {locked ? '🔗 вода и кофе связаны' : '🔓 независимо'}
+        </button>
       </div>
 
       <div className="small">Помол</div>
@@ -113,7 +155,7 @@ export function RecipeEditor({
           <input className="note" value={s.note ?? ''}
             onChange={(e) => setStep(i, { note: e.target.value })} />
           <button className="x"
-            onClick={() => set({ steps: r.steps.filter((_, j) => j !== i) })}>
+            onClick={() => update({ ...r, steps: r.steps.filter((_, j) => j !== i) })}>
             ×
           </button>
         </div>
@@ -121,7 +163,8 @@ export function RecipeEditor({
 
       <button className="btn secondary"
         onClick={() =>
-          set({
+          update({
+            ...r,
             steps: [
               ...r.steps,
               {
