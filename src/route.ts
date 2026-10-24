@@ -6,6 +6,7 @@ export type Route =
   | { name: 'timer'; id: string }
   | { name: 'edit'; id?: string }
   | { name: 'settings' }
+  | { name: 'grinder' }
   | { name: 'beans' }
   | { name: 'bean'; id: string }
   | { name: 'cupping' }
@@ -31,6 +32,7 @@ export function parseRoute(hash: string): Route {
   const [a, b, c] = parts
   switch (a) {
     case 'settings': return { name: 'settings' }
+    case 'grinder': return { name: 'grinder' }
     case 'beans': return b ? { name: 'bean', id: b } : { name: 'beans' }
     case 'cupping': return b ? { name: 'session', id: b } : { name: 'cupping' }
     case 'journal': return b ? { name: 'entry', id: b } : { name: 'journal' }
@@ -50,6 +52,7 @@ export function formatRoute(r: Route): string {
     case 'timer': return `#/brew/${enc(r.id)}`
     case 'edit': return r.id ? `#/brew/${enc(r.id)}/edit` : '#/brew/new'
     case 'settings': return '#/settings'
+    case 'grinder': return '#/grinder'
     case 'beans': return '#/beans'
     case 'bean': return `#/beans/${enc(r.id)}`
     case 'cupping': return '#/cupping'

@@ -16,6 +16,9 @@ import { SyncSettings } from './SyncSettings'
 import { JournalList } from './JournalList'
 import { LogView } from './LogView'
 import { loadSyncConfig } from './sync/sync'
+import { GrinderSettings } from './GrinderSettings'
+import { formatGrind } from './grinders/grind'
+import { loadProfile, saveProfile } from './grinders/profile'
 import { tabOf } from './route'
 import type { Route } from './route'
 import { goBack, navigate, useRoute } from './useRoute'
@@ -42,6 +45,10 @@ export default function App() {
 
   const [beans, setBeans] = useState<BeanProfile[]>(loadBeans)
   useEffect(() => saveBeans(beans), [beans])
+
+  /* «Моя кофемолка» — настройка этого устройства, в синхронизацию пока не входит */
+  const [profile, setProfile] = useState(loadProfile)
+  useEffect(() => saveProfile(profile), [profile])
 
   const [logs, setLogs] = useState<BrewLog[]>(loadLogs)
   useEffect(() => saveLogs(logs), [logs])
@@ -87,7 +94,12 @@ export default function App() {
             setLogs(d.logs); setDeleted(d.deleted)
           }}
           onClose={() => goBack({ name: 'brew' })}
+          onOpenGrinder={() => navigate({ name: 'grinder' })}
         />
+      )
+
+      case 'grinder': return (
+        <GrinderSettings profile={profile} onChange={setProfile} onBack={() => goBack({ name: 'settings' })} />
       )
 
       case 'timer': {
@@ -109,6 +121,7 @@ export default function App() {
           <RecipeEditor
             key={route.id ?? 'new'}
             initial={r}
+            profile={profile}
             onSave={upsertRecipe}
             onCancel={() => goBack({ name: 'brew' })}
             onDelete={delRecipe}
@@ -135,6 +148,8 @@ export default function App() {
           <BeanView
             key={b.id}
             bean={b}
+            profile={profile}
+            onOpenGrinder={() => navigate({ name: 'grinder' })}
             onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? stamp(nb) : x))}
             onBack={() => navigate({ name: 'beans' })}
             onMakeRecipe={r => {
@@ -202,7 +217,7 @@ export default function App() {
             <div className="card" key={r.id} onClick={() => navigate({ name: 'timer', id: r.id })}>
               <div className="grow">
                 <div>{r.title}</div>
-                <div className="meta">{r.doseG} г · {r.waterG} г воды · {r.tempC}°C{r.grind ? ` · ${r.grind}` : ''}</div>
+                <div className="meta">{r.doseG} г · {r.waterG} г воды · {r.tempC}°C{r.grind ? ` · ${formatGrind(r.grind)}` : ''}</div>
               </div>
               <button className={'heart' + (r.favorite ? ' on' : '')}
                 onClick={e => {

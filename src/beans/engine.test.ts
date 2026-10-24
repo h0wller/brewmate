@@ -31,40 +31,53 @@ describe('daysSince', () => {
 })
 
 describe('recommend', () => {
-  it('средняя обжарка без дат — базовые значения V60', () => {
-    expect(recommend(bean(), 'v60')).toEqual({ clicks: 24, temp: 93, ratio: 16, bloom: 45, tips: [] })
+  it('средняя обжарка без дат — базовые значения V60 (средне-мелкий, без поправок)', () => {
+    expect(recommend(bean(), 'v60')).toEqual({
+      coarseness: 2, size: 'medium_fine', nudge: 0, temp: 93, ratio: 16, bloom: 45, tips: [],
+    })
   })
 
   it('тёмная: крупнее и холоднее', () => {
     const r = recommend(bean({ roastLevel: 'dark' }), 'v60')
-    expect([r.clicks, r.temp]).toEqual([27, 90])
+    expect([r.size, r.nudge, r.temp]).toEqual(['medium_fine', 1, 90])
     expect(r.tips).toHaveLength(1)
   })
 
   it('светлая: мельче и горячее', () => {
     const r = recommend(bean({ roastLevel: 'light' }), 'v60')
-    expect([r.clicks, r.temp]).toEqual([22, 95])
+    expect([r.size, r.nudge, r.temp]).toEqual(['medium_fine', -1, 95])
   })
 
   it('натуральная обработка: чуть крупнее и прохладнее', () => {
     const r = recommend(bean({ process: 'natural' }), 'v60')
-    expect([r.clicks, r.temp]).toEqual([25, 92])
+    expect([r.size, r.nudge, r.temp]).toEqual(['medium_fine', 1, 92])
   })
 
-  it('свежее зерно (3 дня): дольше блюм', () => {
+  it('поправки складываются: тёмная натуральная дотягивает до следующего уровня', () => {
+    const r = recommend(bean({ roastLevel: 'dark', process: 'natural' }), 'v60')
+    expect(r.size).toBe('medium')
+    expect(r.nudge).toBe(-1)
+  })
+
+  it('свежее зерно (3 дня): дольше блюм, чуть крупнее', () => {
     const r = recommend(bean({ roastDate: '2026-10-19' }), 'v60')
     expect(r.bloom).toBe(60)
-    expect(r.clicks).toBe(25)
+    expect(r.nudge).toBe(1)
   })
 
   it('старое зерно (51 день): мельче помол', () => {
     const r = recommend(bean({ roastDate: '2026-09-01' }), 'v60')
-    expect(r.clicks).toBe(22)
+    expect(r.nudge).toBe(-1)
     expect(r.tips.some(t => t.includes('51'))).toBe(true)
   })
 
-  it('другой метод берёт свои базовые значения', () => {
+  it('другой метод берёт свой базовый уровень', () => {
     const r = recommend(bean({ roastLevel: 'dark' }), 'french')
-    expect([r.clicks, r.temp, r.ratio]).toEqual([35, 92, 15])
+    expect([r.size, r.nudge, r.temp, r.ratio]).toEqual(['coarse', 1, 92, 15])
+  })
+
+  it('крупность не выходит за шкалу', () => {
+    const r = recommend(bean({ roastLevel: 'dark', process: 'natural', roastDate: '2026-10-21' }), 'french')
+    expect(r.coarseness <= 6 && r.coarseness >= 0).toBe(true)
   })
 })

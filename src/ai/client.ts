@@ -63,8 +63,9 @@ export function buildPackagePrompt(methodLabel: string) {
   Верни СТРОГО JSON без markdown и пояснений:
 {
   "bean": { "name": "строка", "origin": "строка", "process": "washed|natural|honey|anaerobic|other", "roastLevel": "light|medium|dark", "roastDate": "YYYY-MM-DD или null", "notes": "дескрипторы с пачки" },
-  "recipe": { "title": "строка", "tempC": 88-96, "ratio": 14-17, "grind": "например: Comandante 24 клика", "steps": [ { "duration": секунды, "pourTo": суммарные граммы воды, "note": "строка" } ] }
+  "recipe": { "title": "строка", "tempC": 88-96, "ratio": 14-17, "grindSize": "extra_fine|fine|medium_fine|medium|medium_coarse|coarse|extra_coarse", "steps": [ { "duration": секунды, "pourTo": суммарные граммы воды, "note": "строка" } ] }
 }
+grindSize — только одно значение из списка (уровень крупности помола), настройки конкретной кофемолки не придумывай.
 Правила: светлая обжарка — вода горячее и помол мельче; тёмная — вода холоднее и помол крупнее; натуральная обработка — чуть крупнее помол.
 steps: 3–5 шагов, первый — блюм (2–3 веса дозы), pourTo растёт монотонно до dose*ratio.`
 }

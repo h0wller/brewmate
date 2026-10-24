@@ -1,5 +1,7 @@
-import type { BeanProfile, BrewStep, Recipe } from '../types'
+import type { BeanProfile, BrewStep, Grind, Recipe } from '../types'
 import { uid } from '../storage'
+import { GRIND_SIZES, describeCoarseness } from '../grinders/size'
+import type { GrindSize } from '../grinders/size'
 
 export type RoastLevel = 'light' | 'medium' | 'dark'
 export type MethodKey = 'v60' | 'drip' | 'french' | 'aero' | 'cupping'
@@ -8,13 +10,15 @@ export const LEVEL_LABEL: Record<RoastLevel, string> = {
   light: 'светлая', medium: 'средняя', dark: 'тёмная',
 }
 
-/* Базовые настройки под среднюю обжарку */
-export const METHODS: Record<MethodKey, { label: string; ratio: number; clicks: number; temp: number; bloom: number }> = {
-  v60: { label: 'V60', ratio: 16, clicks: 24, temp: 93, bloom: 45 },
-  drip: { label: 'Капельная', ratio: 15, clicks: 22, temp: 93, bloom: 30 },
-  french: { label: 'Френч-пресс', ratio: 15, clicks: 32, temp: 95, bloom: 0 },
-  aero: { label: 'Аэропресс', ratio: 13, clicks: 18, temp: 90, bloom: 0 },
-  cupping: { label: 'Каппинг', ratio: 18, clicks: 26, temp: 94, bloom: 0 },
+/* Базовые настройки под среднюю обжарку. Помол — уровень общей шкалы крупности,
+   а не клики конкретной кофемолки: в настройку своей кофемолки он переводится
+   через калибровку пользователя (grinders/profile.ts). */
+export const METHODS: Record<MethodKey, { label: string; ratio: number; size: GrindSize; temp: number; bloom: number }> = {
+  v60: { label: 'V60', ratio: 16, size: 'medium_fine', temp: 93, bloom: 45 },
+  drip: { label: 'Капельная', ratio: 15, size: 'medium', temp: 93, bloom: 30 },
+  french: { label: 'Френч-пресс', ratio: 15, size: 'coarse', temp: 95, bloom: 0 },
+  aero: { label: 'Аэропресс', ratio: 13, size: 'medium_fine', temp: 90, bloom: 0 },
+  cupping: { label: 'Каппинг', ratio: 18, size: 'medium_coarse', temp: 94, bloom: 0 },
 }
 
 export const levelFromAgtron = (a: number): RoastLevel =>
@@ -61,46 +65,52 @@ export function analyzeBeanPhoto(file: File): Promise<{ agtron: number; level: R
 }
 
 export interface Recommendation {
-  clicks: number; temp: number; ratio: number; bloom: number; tips: string[]
+  coarseness: number          // дробная крупность: 0 — очень мелкий … 6 — очень крупный
+  size: GrindSize             // ближайший уровень шкалы
+  nudge: -1 | 0 | 1           // −1 «чуть мельче», +1 «чуть крупнее» относительно уровня
+  temp: number; ratio: number; bloom: number; tips: string[]
 }
 
 export function recommend(bean: BeanProfile, method: MethodKey): Recommendation {
   const m = METHODS[method]
-  let clicks = m.clicks
+  let coarse = GRIND_SIZES.indexOf(m.size)   // в долях уровня шкалы
   let temp = m.temp
   let bloom = m.bloom
   const tips: string[] = []
 
   if (bean.roastLevel === 'dark') {
-    clicks += 3; temp -= 3
+    coarse += 0.4; temp -= 3
     tips.push('Тёмная обжарка — помол крупнее и вода холоднее, чтобы не горчить.')
   }
   if (bean.roastLevel === 'light') {
-    clicks -= 2; temp += 2
+    coarse -= 0.4; temp += 2
     tips.push('Светлая обжарка — мельче помол и горячее вода для плотной экстракции.')
   }
 
   const days = daysSince(bean.roastDate)
   if (days !== null) {
     if (days < 7) {
-      clicks += 1; bloom += 15
+      coarse += 0.3; bloom += 15
       tips.push(`Свежее зерно (${days} дн.) — дегазация: блюм дольше на 15 сек.`)
     } else if (days > 30) {
-      clicks -= 2
+      coarse -= 0.4
       tips.push(`Зерну ${days} дн. — мели мельче и используй скорее.`)
     }
   }
 
   if (bean.process === 'natural') {
-    clicks += 1; temp -= 1
+    coarse += 0.3; temp -= 1
     tips.push('Натуральная обработка — слаще и растворимее: чуть крупнее помол.')
   }
   if (bean.process === 'anaerobic') {
     tips.push('Анаэробная ферментация — яркая чашка: начни с базового помола и слушай вкус.')
   }
 
+  const { size, nudge } = describeCoarseness(coarse)
   return {
-    clicks: Math.max(8, Math.min(45, clicks)),
+    coarseness: Math.max(0, Math.min(GRIND_SIZES.length - 1, coarse)),
+    size,
+    nudge,
     temp: Math.max(85, Math.min(98, temp)),
     ratio: m.ratio,
     bloom,
@@ -108,7 +118,7 @@ export function recommend(bean: BeanProfile, method: MethodKey): Recommendation 
   }
 }
 
-export function recipeFromBean(bean: BeanProfile, method: MethodKey, rec: Recommendation): Recipe {
+export function recipeFromBean(bean: BeanProfile, method: MethodKey, rec: Recommendation, grind: Grind): Recipe {
   const dose = 15
   const water = Math.round(dose * rec.ratio)
   let steps: BrewStep[]
@@ -133,7 +143,7 @@ export function recipeFromBean(bean: BeanProfile, method: MethodKey, rec: Recomm
     doseG: dose,
     waterG: water,
     tempC: rec.temp,
-    grind: `Comandante ${rec.clicks} кликов`,
+    grind,
     steps,
     createdAt: Date.now(),
   }

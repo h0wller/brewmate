@@ -1,8 +1,25 @@
+import type { GrindSize } from './grinders/size'
+
 export interface BrewStep { duration: number; pourTo: number; note?: string }
+
+/* Помол. Три независимых способа его описать (формат совместим с CoffeeJSON):
+   настройка на конкретной кофемолке («22 клика»), уровень крупности и сама кофемолка.
+   Настройки разных кофемолок между собой не конвертируются. */
+export interface Grind {
+  grinder?: { id: string; label?: string }  // id из каталога или 'custom'
+  setting?: string                          // как выражено на этой кофемолке
+  size?: GrindSize
+}
+
+/* «Моя кофемолка»: какая она и какую настройку пользователь ставит для каждого уровня */
+export interface GrinderProfile {
+  grinder?: { id: string; label?: string }
+  calibration: Partial<Record<GrindSize, string>>
+}
 
 export interface Recipe {
   id: string; title: string; method: string;
-  doseG: number; waterG: number; tempC: number; grind?: string;
+  doseG: number; waterG: number; tempC: number; grind?: Grind;
   steps: BrewStep[]; favorite?: boolean; createdAt: number;
   updatedAt?: number; // время последней правки (для слияния при синхронизации)
 }
@@ -20,7 +37,7 @@ export interface BrewLog {
   doseG: number
   waterG: number
   tempC: number
-  grind?: string
+  grind?: Grind
   steps: BrewStep[]       // план из рецепта (для сравнения «план / факт»)
   beanId?: string
   beanName?: string

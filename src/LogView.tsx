@@ -1,6 +1,7 @@
 import type { BeanProfile, BrewLog } from './types'
 import { CurveChart } from './CurveChart'
 import { fmtDate } from './brewlog/format'
+import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
 
@@ -38,7 +39,7 @@ export function LogView({ log, beans, canRepeat, onChange, onBack, onRepeat, onD
         <div><div className="recVal">{log.tempC}°</div><div className="small">вода</div></div>
       </div>
       <div className="small" style={{ marginTop: 0 }}>
-        {log.doseG} г кофе{log.grind ? ` · ${log.grind}` : ''}
+        {log.doseG} г кофе{log.grind ? ` · ${formatGrind(log.grind, { withGrinder: true })}` : ''}
       </div>
 
       {log.curve && log.curve.length > 1

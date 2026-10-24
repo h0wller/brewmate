@@ -102,6 +102,12 @@ describe('sanitizeData', () => {
     expect(d.deleted).toEqual({ a: 1 })
   })
 
+  it('старый помол-строка с сервера приводится к объекту', () => {
+    const d = sanitizeData({ recipes: [{ id: 'x', grind: 'Comandante 24 клика' }], logs: [{ id: 'l', grind: 'мелко' }] })
+    expect(d.recipes[0].grind).toEqual({ setting: 'Comandante 24 клика' })
+    expect(d.logs[0].grind).toEqual({ setting: 'мелко' })
+  })
+
   it('принимает старый формат сервера без deleted и logs', () => {
     const d = sanitizeData({ recipes: [{ id: 'x' }], sessions: [], beans: [] })
     expect(d.deleted).toEqual({})

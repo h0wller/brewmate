@@ -1,5 +1,6 @@
 import type { BeanProfile, BrewLog, CuppingSession, Recipe } from './types'
 import { sanitizeData } from './sync/merge'
+import { migrateGrind } from './grinders/grind'
 import type { Tombstones } from './sync/merge'
 
 const RKEY = 'brewmate.recipes.v1'
@@ -24,7 +25,8 @@ function writeJSON(key: string, value: unknown): void {
   catch (e) { console.warn('storage: не удалось сохранить', key, e) }
 }
 
-export const loadRecipes = (): Recipe[] => readList<Recipe>(RKEY)
+/* помол раньше был строкой — старые записи приводим к актуальному виду при чтении */
+export const loadRecipes = (): Recipe[] => readList<Recipe>(RKEY).map(migrateGrind)
 export const saveRecipes = (r: Recipe[]): void => writeJSON(RKEY, r)
 
 export const loadSessions = (): CuppingSession[] => readList<CuppingSession>(CKEY)
@@ -33,7 +35,7 @@ export const saveSessions = (s: CuppingSession[]): void => writeJSON(CKEY, s)
 export const loadBeans = (): BeanProfile[] => readList<BeanProfile>(BKEY)
 export const saveBeans = (b: BeanProfile[]): void => writeJSON(BKEY, b)
 
-export const loadLogs = (): BrewLog[] => readList<BrewLog>(LKEY)
+export const loadLogs = (): BrewLog[] => readList<BrewLog>(LKEY).map(migrateGrind)
 export const saveLogs = (l: BrewLog[]): void => writeJSON(LKEY, l)
 
 export const loadDeleted = (): Tombstones => {

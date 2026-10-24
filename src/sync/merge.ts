@@ -1,4 +1,5 @@
 import type { BeanProfile, BrewLog, CuppingSession, Recipe } from '../types'
+import { migrateGrind } from '../grinders/grind'
 
 /* id → время удаления (мс). Нужны, чтобы удалённое не «воскресало» при синхронизации */
 export type Tombstones = Record<string, number>
@@ -38,10 +39,10 @@ const cleanDeleted = (v: unknown): Tombstones => {
 export function sanitizeData(raw: unknown): AppData {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   return {
-    recipes: cleanList<Recipe>(r.recipes),
+    recipes: cleanList<Recipe>(r.recipes).map(migrateGrind),
     sessions: cleanList<CuppingSession>(r.sessions),
     beans: cleanList<BeanProfile>(r.beans),
-    logs: cleanList<BrewLog>(r.logs),
+    logs: cleanList<BrewLog>(r.logs).map(migrateGrind),
     deleted: cleanDeleted(r.deleted),
   }
 }

@@ -4,11 +4,12 @@ import type { SyncConfig, SyncData } from './sync/sync'
 import { mergeData, sanitizeData } from './sync/merge'
 import { downloadText } from './download'
 
-export function SyncSettings({ initial, local, onMerged, onClose }: {
+export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder }: {
   initial: SyncConfig | null
   local: SyncData
   onMerged: (d: SyncData) => void
   onClose: () => void
+  onOpenGrinder: () => void
 }) {
   const [c, setC] = useState<SyncConfig>(initial ?? { url: '', anonKey: '', code: '' })
   const [msg, setMsg] = useState('')
@@ -55,7 +56,11 @@ export function SyncSettings({ initial, local, onMerged, onClose }: {
   return (
     <div>
       <button className="back" onClick={onClose}>← Назад</button>
-      <h1>Данные и синхронизация ☁️</h1>
+      <h1>Настройки</h1>
+
+      <button className="btn secondary" style={{ marginTop: 0 }} onClick={onOpenGrinder}>🔧 Моя кофемолка</button>
+
+      <div className="small">Данные и синхронизация ☁️</div>
 
       <div className="small">
         Один код — общие данные на всех устройствах. На втором телефоне введи те же URL, key и код.
