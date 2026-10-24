@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { genCode, saveSyncConfig, syncAll } from './sync/sync'
 import type { SyncConfig, SyncData } from './sync/sync'
-import { mergeData, sanitizeData } from './sync/merge'
+import { emptyData, mergeData, sanitizeData } from './sync/merge'
+import { CoffeeJSONError, COFFEEJSON_MEDIA_TYPE, parseCoffeeJSON, toCoffeeJSON } from './coffeejson/coffeejson'
 import { downloadText } from './download'
 
 export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder }: {
@@ -15,6 +16,7 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder 
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const cjRef = useRef<HTMLInputElement>(null)
   const ready = c.url && c.anonKey && c.code
 
   const doSync = async () => {
@@ -53,6 +55,28 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder 
     } catch (e) { setMsg('❌ Импорт: ' + (e as Error).message) }
   }
 
+  /* обмен рецептами с другими приложениями (формат CoffeeJSON) */
+  const exportCoffeeJSON = () => {
+    if (!local.recipes.length) { setMsg('❌ Нет рецептов для экспорта'); return }
+    downloadText(`brewmate-recipes-${new Date().toISOString().slice(0, 10)}.json`, toCoffeeJSON(local.recipes), COFFEEJSON_MEDIA_TYPE)
+    setMsg(`✅ Экспортировано рецептов: ${local.recipes.length} (CoffeeJSON)`)
+  }
+
+  const importCoffeeJSON = async (f: File) => {
+    setMsg('')
+    try {
+      if (f.size > 2_000_000) throw new CoffeeJSONError('not_a_document', 'файл больше 2 МБ — это не рецепты')
+      const res = parseCoffeeJSON(await f.text())
+      if (res.recipes.length) onMerged(mergeData(local, { ...emptyData(), recipes: res.recipes }))
+      const lines = [
+        res.recipes.length ? `✅ Импортировано рецептов: ${res.recipes.length}` : '❌ Ни один рецепт не подошёл',
+        ...res.skipped.map(x => `пропущен «${x.title}»: ${x.reason}`),
+        ...res.notes,
+      ]
+      setMsg(lines.join('\n'))
+    } catch (e) { setMsg('❌ Импорт CoffeeJSON: ' + (e as Error).message) }
+  }
+
   return (
     <div>
       <button className="back" onClick={onClose}>← Назад</button>
@@ -76,7 +100,7 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder 
           onClick={() => setC({ ...c, code: genCode() })}>🎲</button>
       </div>
 
-      {msg && <div className="small" style={{ wordBreak: 'break-word' }}>{msg}</div>}
+      {msg && <div className="small" style={{ wordBreak: 'break-word', whiteSpace: 'pre-line' }}>{msg}</div>}
 
       <button className="btn" disabled={!ready || busy} onClick={doSync}>
         {busy ? 'Синхронизирую…' : '🔄 Синхронизировать'}
@@ -91,6 +115,14 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder 
         onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.currentTarget.value = '' }} />
       <button className="btn secondary" onClick={exportJson}>⬇️ Скачать копию</button>
       <button className="btn secondary" onClick={() => fileRef.current?.click()}>⬆️ Загрузить из файла</button>
+
+      <div className="small">
+        Обмен рецептами с другими приложениями — открытый формат CoffeeJSON (рецепты, без журнала и зерна)
+      </div>
+      <input ref={cjRef} type="file" accept="application/json,.json" hidden
+        onChange={e => { const f = e.target.files?.[0]; if (f) importCoffeeJSON(f); e.currentTarget.value = '' }} />
+      <button className="btn secondary" onClick={exportCoffeeJSON}>⬇️ Рецепты в CoffeeJSON</button>
+      <button className="btn secondary" onClick={() => cjRef.current?.click()}>⬆️ Рецепты из CoffeeJSON</button>
     </div>
   )
 }
