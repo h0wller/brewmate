@@ -1,3 +1,6 @@
+import { buildPackagePrompt } from './prompt'
+export { buildPackagePrompt }
+
 export interface AIConfig {
   provider: string
   baseUrl: string
@@ -19,6 +22,7 @@ export const loadAIConfig = (): AIConfig | null => {
   try { return JSON.parse(localStorage.getItem(KEY) ?? 'null') } catch { return null }
 }
 export const saveAIConfig = (c: AIConfig) => localStorage.setItem(KEY, JSON.stringify(c))
+export const clearAIConfig = () => localStorage.removeItem(KEY)
 
 export function fileToBase64(f: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -29,7 +33,7 @@ export function fileToBase64(f: File): Promise<string> {
   })
 }
 
-/* Универсальный вызов vision-модели в OpenAI-формате */
+/* Прямой вызов vision-модели в OpenAI-формате — режим «свой ключ» (⚙️ → Расширенные настройки AI) */
 export async function askVision(cfg: AIConfig, image: string, prompt: string): Promise<any> {
   const res = await fetch(cfg.baseUrl.replace(/\/$/, '') + '/chat/completions', {
     method: 'POST',
@@ -57,18 +61,71 @@ export async function askVision(cfg: AIConfig, image: string, prompt: string): P
   return JSON.parse(m[0])
 }
 
-export function buildPackagePrompt(methodLabel: string) {
-  return `Ты — чемпион-бариста. На фото — пачка кофе. Извлеки данные и составь рецепт для метода ${methodLabel}, доза 15 г.
-  Все текстовые поля (title, note, notes) пиши на русском языке.
-  Верни СТРОГО JSON без markdown и пояснений:
-{
-  "bean": { "name": "строка", "origin": "строка", "process": "washed|natural|honey|anaerobic|other", "roastLevel": "light|medium|dark", "roastDate": "YYYY-MM-DD или null", "notes": "дескрипторы с пачки" },
-  "recipe": { "title": "строка", "tempC": 88-96, "ratio": 14-17, "grindSize": "extra_fine|fine|medium_fine|medium|medium_coarse|coarse|extra_coarse", "steps": [ { "duration": секунды, "pourTo": суммарные граммы воды, "note": "строка" } ] }
+/* ---------- бесплатный AI через сервер BrewMate (/api/vision) ---------- */
+
+export type AIErrorKind = 'limit_user' | 'limit_global' | 'busy' | 'unavailable' | 'network' | 'bad'
+
+export class AIError extends Error {
+  kind: AIErrorKind
+  constructor(kind: AIErrorKind, message: string) {
+    super(message)
+    this.kind = kind
+  }
 }
-grindSize — только одно значение из списка (уровень крупности помола), настройки конкретной кофемолки не придумывай.
-Правила: светлая обжарка — вода горячее и помол мельче; тёмная — вода холоднее и помол крупнее; натуральная обработка — чуть крупнее помол.
-steps: 3–5 шагов, первый — блюм (2–3 веса дозы), pourTo растёт монотонно до dose*ratio.`
+
+const OWN_KEY_HINT = 'Или добавь свой ключ: ⚙️ → Расширенные настройки AI.'
+const fail = (e: AIError): never => { throw e }
+
+/* Ответ сервера → результат или понятная пользователю ошибка (чистая функция, проверяется тестами) */
+export function parseProxyResponse(status: number, body: unknown): unknown {
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>
+  if (status === 200) {
+    if (b.result && typeof b.result === 'object') return b.result
+    return fail(new AIError('bad', 'AI вернул пустой ответ. Попробуй ещё раз.'))
+  }
+  if (status === 429 && b.error === 'limit') {
+    const when = typeof b.resetAt === 'string' ? new Date(b.resetAt) : null
+    const at = when && !isNaN(+when)
+      ? ` Обновится в ${when.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}.`
+      : ''
+    return fail(b.scope === 'global'
+      ? new AIError('limit_global', `Бесплатные AI-запросы на сегодня закончились у всех пользователей.${at} ${OWN_KEY_HINT}`)
+      : new AIError('limit_user', `Ты использовал(а) все бесплатные AI-запросы на сегодня.${at} ${OWN_KEY_HINT}`))
+  }
+  if (status === 503 && b.error === 'busy') {
+    return fail(new AIError('busy', 'AI сейчас перегружен. Попробуй через минуту.'))
+  }
+  if (status === 503 && b.error === 'not_configured') {
+    return fail(new AIError('unavailable', `Бесплатный AI на сервере ещё не включён. ${OWN_KEY_HINT}`))
+  }
+  if (status === 404 || status === 405) {
+    return fail(new AIError('unavailable', `Сервер AI недоступен (в режиме разработки запускай через «vercel dev»). ${OWN_KEY_HINT}`))
+  }
+  if (status === 413) return fail(new AIError('bad', 'Фото слишком большое. Попробуй сфотографировать ещё раз.'))
+  if (status === 400) {
+    return fail(new AIError('bad', `Не удалось отправить фото: ${typeof b.message === 'string' ? b.message : 'неверный запрос'}.`))
+  }
+  return fail(new AIError('busy', `AI временно недоступен (${status}). Попробуй позже.`))
 }
+
+/* Распознать пачку: со своим ключом — напрямую, иначе через бесплатный сервер BrewMate */
+export async function recognizePackage(cfg: AIConfig | null, methodLabel: string, image: string): Promise<any> {
+  if (cfg?.apiKey && cfg.baseUrl) return askVision(cfg, image, buildPackagePrompt(methodLabel))
+  let res: Response
+  try {
+    res = await fetch('/api/vision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: 'package', methodLabel, image }),
+    })
+  } catch {
+    throw new AIError('network', 'Нет связи с сервером. Проверь интернет и попробуй ещё раз.')
+  }
+  let body: unknown = null
+  try { body = await res.json() } catch { /* не JSON — parseProxyResponse разберёт по статусу */ }
+  return parseProxyResponse(res.status, body)
+}
+
 /* Быстрая проверка ключа/модели текстовым запросом */
 export async function pingAI(cfg: AIConfig): Promise<string> {
   const res = await fetch(cfg.baseUrl.replace(/\/$/, '') + '/chat/completions', {

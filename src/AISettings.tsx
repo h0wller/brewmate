@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AI_PROVIDERS, pingAI, saveAIConfig } from './ai/client'
+import { AI_PROVIDERS, clearAIConfig, pingAI, saveAIConfig } from './ai/client'
 import type { AIConfig } from './ai/client'
 
 export function AISettings({ initial, onDone, onCancel }: {
@@ -28,7 +28,7 @@ export function AISettings({ initial, onDone, onCancel }: {
 
   return (
     <div className="card" style={{ display: 'block', cursor: 'default' }}>
-      <div className="small" style={{ margin: '0 0 8px' }}>AI-провайдер (любой OpenAI-совместимый API)</div>
+      <div className="small" style={{ margin: '0 0 8px' }}>Свой AI-провайдер (любой OpenAI-совместимый API). Ключ хранится только на этом устройстве.</div>
       <div className="lotChips">
         {AI_PROVIDERS.map(p => (
           <button key={p.id} className={'chip' + (c.provider === p.id ? ' on' : '')} onClick={() => pick(p.id)}>
@@ -50,6 +50,11 @@ export function AISettings({ initial, onDone, onCancel }: {
       <button className="btn secondary" disabled={!c.apiKey || !c.baseUrl || !c.model || busy} onClick={test}>
         {busy ? 'Проверяю…' : 'Проверить'}
       </button>
+      {initial && (
+        <button className="btn secondary" onClick={() => { clearAIConfig(); onCancel() }}>
+          Убрать свой ключ (вернуться к бесплатному AI)
+        </button>
+      )}
       <button className="btn secondary" onClick={onCancel}>Отмена</button>
     </div>
   )

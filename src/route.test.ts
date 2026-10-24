@@ -9,6 +9,7 @@ const ALL: Route[] = [
   { name: 'edit', id: 'abc123' },
   { name: 'settings' },
   { name: 'grinder' },
+  { name: 'ai' },
   { name: 'beans' },
   { name: 'bean', id: 'b1' },
   { name: 'cupping' },

@@ -1,0 +1,292 @@
+/* Серверная часть бесплатного AI: фото пачки → JSON с зерном и рецептом.
+   Ключи провайдеров лежат только в переменных окружения сервера. Клиент не присылает свой текст запроса
+   (только метод заваривания и картинку), а число запросов ограничено на человека и на всех в день,
+   чтобы бесплатные квоты не сгорели за вечер.
+
+   Весь ввод-вывод передаётся снаружи (fetch, хранилище счётчиков, часы), поэтому логика проверяется тестами. */
+
+import { buildPackagePrompt } from '../src/ai/prompt.js'
+
+export type Env = Record<string, string | undefined>
+
+export interface Provider { id: string; baseUrl: string; model: string; key: string }
+
+/* Порядок = приоритет. Провайдер включается, если задан его ключ; модель можно сменить переменной
+   <ID>_MODEL без выпуска приложения (названия моделей у бесплатных тарифов меняются). */
+const KNOWN = [
+  { id: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash' },
+  { id: 'groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'meta-llama/llama-4-scout-17b-16e-instruct' },
+  { id: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.2-11b-vision-instruct:free' },
+]
+
+export function loadProviders(env: Env): Provider[] {
+  const out: Provider[] = []
+  for (const p of KNOWN) {
+    const name = p.id.toUpperCase()
+    const key = env[`${name}_API_KEY`]?.trim()
+    if (key) out.push({ ...p, key, model: env[`${name}_MODEL`]?.trim() || p.model })
+  }
+  return out
+}
+
+export interface Limits { perUserPerDay: number; globalPerDay: number; maxImageChars: number }
+
+export function loadLimits(env: Env): Limits {
+  const n = (v: string | undefined, d: number) => {
+    const x = Number(v)
+    return Number.isFinite(x) && x > 0 ? Math.floor(x) : d
+  }
+  return {
+    perUserPerDay: n(env.AI_LIMIT_PER_USER, 10),
+    globalPerDay: n(env.AI_LIMIT_GLOBAL, 500),
+    maxImageChars: n(env.AI_MAX_IMAGE_CHARS, 1_500_000),
+  }
+}
+
+/* ---------- проверка запроса ---------- */
+
+export interface VisionRequest { methodLabel: string; image: string }
+
+const IMAGE_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/
+const LABEL_RE = /^[\p{L}\p{N} .\-·]{1,30}$/u
+
+export function validateRequest(
+  body: unknown, maxImageChars: number,
+): { ok: true; value: VisionRequest } | { ok: false; message: string } {
+  if (!body || typeof body !== 'object') return { ok: false, message: 'ожидается JSON-объект' }
+  const b = body as Record<string, unknown>
+  if (b.task !== 'package') return { ok: false, message: 'неизвестная задача' }
+  if (typeof b.methodLabel !== 'string' || !LABEL_RE.test(b.methodLabel)) {
+    return { ok: false, message: 'некорректный метод заваривания' }
+  }
+  if (typeof b.image !== 'string' || !IMAGE_RE.test(b.image)) {
+    return { ok: false, message: 'нужна картинка jpeg, png или webp в виде data URL' }
+  }
+  if (b.image.length > maxImageChars) return { ok: false, message: 'картинка слишком большая' }
+  return { ok: true, value: { methodLabel: b.methodLabel, image: b.image } }
+}
+
+/* ---------- счётчики запросов ---------- */
+
+export interface CounterStore {
+  /* увеличить счётчик и вернуть новое значение; ключ живёт ttlS секунд */
+  incr(key: string, ttlS: number): Promise<number>
+}
+
+export function memoryStore(now: () => number = Date.now): CounterStore {
+  const m = new Map<string, { n: number; exp: number }>()
+  return {
+    async incr(key, ttlS) {
+      const t = now()
+      for (const [k, v] of m) if (v.exp <= t) m.delete(k)   // чтобы карта не росла
+      const cur = m.get(key)
+      const e = cur && cur.exp > t ? cur : { n: 0, exp: t + ttlS * 1000 }
+      e.n++
+      m.set(key, e)
+      return e.n
+    },
+  }
+}
+
+/* Upstash Redis по REST (бесплатный тариф, подключается в Vercel Marketplace): счётчики общие для всех
+   экземпляров функции. Без него лимит считается в памяти одного экземпляра и точен лишь приблизительно. */
+export function upstashStore(url: string, token: string, fetchFn: typeof fetch): CounterStore {
+  return {
+    async incr(key, ttlS) {
+      const res = await fetchFn(url.replace(/\/$/, '') + '/pipeline', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify([['INCR', key], ['EXPIRE', key, ttlS, 'NX']]),
+      })
+      if (!res.ok) throw new Error(`upstash ${res.status}`)
+      const out = (await res.json()) as { result?: unknown }[]
+      const n = Number(out?.[0]?.result)
+      if (!Number.isFinite(n)) throw new Error('upstash: неожиданный ответ')
+      return n
+    },
+  }
+}
+
+const DAY_MS = 86_400_000
+export const dayOf = (t: number) => new Date(t).toISOString().slice(0, 10)
+export const nextDayAt = (t: number) => new Date(Math.floor(t / DAY_MS) * DAY_MS + DAY_MS).toISOString()
+
+async function hashIp(ip: string, salt: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ip))
+  return Array.from(new Uint8Array(buf)).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+export type LimitResult = { ok: true } | { ok: false; scope: 'user' | 'global'; resetAt: string }
+
+export async function checkLimits(
+  store: CounterStore, ip: string, salt: string, limits: Limits, now: number,
+): Promise<LimitResult> {
+  const day = dayOf(now)
+  const ttl = 2 * 86400
+  const user = await store.incr(`ai:u:${day}:${await hashIp(ip, salt)}`, ttl)
+  if (user > limits.perUserPerDay) return { ok: false, scope: 'user', resetAt: nextDayAt(now) }
+  const all = await store.incr(`ai:g:${day}`, ttl)
+  if (all > limits.globalPerDay) return { ok: false, scope: 'global', resetAt: nextDayAt(now) }
+  return { ok: true }
+}
+
+/* ---------- вызов провайдеров ---------- */
+
+export class ProviderError extends Error {
+  status: number
+  retryAfterS?: number
+  constructor(status: number, message: string, retryAfterS?: number) {
+    super(message)
+    this.status = status
+    this.retryAfterS = retryAfterS
+  }
+}
+
+export function extractJson(text: string): unknown {
+  const m = text.match(/\{[\s\S]*\}/)
+  if (!m) throw new ProviderError(502, 'модель не вернула JSON')
+  try { return JSON.parse(m[0]) } catch { throw new ProviderError(502, 'модель вернула битый JSON') }
+}
+
+async function callProvider(
+  fetchFn: typeof fetch, p: Provider, req: VisionRequest, timeoutMs: number,
+): Promise<unknown> {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), timeoutMs)
+  try {
+    const res = await fetchFn(p.baseUrl + '/chat/completions', {
+      method: 'POST',
+      signal: ctl.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.key}` },
+      body: JSON.stringify({
+        model: p.model,
+        temperature: 0.3,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: buildPackagePrompt(req.methodLabel) },
+            { type: 'image_url', image_url: { url: req.image } },
+          ],
+        }],
+      }),
+    })
+    if (!res.ok) {
+      const ra = Number(res.headers.get('retry-after'))
+      throw new ProviderError(res.status, (await res.text()).slice(0, 200), Number.isFinite(ra) && ra > 0 ? ra : undefined)
+    }
+    const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
+    const text = data.choices?.[0]?.message?.content
+    if (typeof text !== 'string') throw new ProviderError(502, 'пустой ответ модели')
+    return extractJson(text)
+  } catch (e) {
+    if (e instanceof ProviderError) throw e
+    throw new ProviderError(ctl.signal.aborted ? 504 : 502, (e as Error).message)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/* Сколько секунд провайдера не трогаем после ошибки. 429 — обычно минутный лимит;
+   401/403 — ключ не принят (это ошибка настройки, а не «лимит»), и о ней нужно узнать из логов. */
+export function cooldownS(e: ProviderError): number {
+  if (e.status === 429) return Math.min(e.retryAfterS ?? 60, 300)
+  if (e.status === 401 || e.status === 403) return 600
+  if (e.status === 400) return 0          // скорее всего, картинка; другому провайдеру может подойти
+  return 30
+}
+
+export interface Health { until: Map<string, number>; lastGood?: string }
+export const newHealth = (): Health => ({ until: new Map() })
+
+export type VisionOutcome =
+  | { ok: true; result: unknown; provider: string }
+  | { ok: false; reason: 'busy'; retryAfterS: number }
+
+export async function runVision(
+  fetchFn: typeof fetch, providers: Provider[], req: VisionRequest, health: Health,
+  now: number, timeoutMs = 25_000, log: (m: string) => void = () => {},
+): Promise<VisionOutcome> {
+  const free = providers.filter(p => (health.until.get(p.id) ?? 0) <= now)
+  if (!free.length) {
+    const soon = Math.min(...providers.map(p => health.until.get(p.id) ?? 0))
+    return { ok: false, reason: 'busy', retryAfterS: Math.max(1, Math.ceil((soon - now) / 1000)) }
+  }
+  const ordered = [...free.filter(p => p.id === health.lastGood), ...free.filter(p => p.id !== health.lastGood)]
+  for (const p of ordered) {
+    try {
+      const result = await callProvider(fetchFn, p, req, timeoutMs)
+      health.lastGood = p.id
+      return { ok: true, result, provider: p.id }
+    } catch (e) {
+      const err = e as ProviderError
+      const cd = cooldownS(err)
+      if (cd > 0) health.until.set(p.id, now + cd * 1000)
+      log(`vision: ${p.id} ${err.status} ${err.message.slice(0, 120)}`)
+    }
+  }
+  return { ok: false, reason: 'busy', retryAfterS: 30 }
+}
+
+/* ---------- обработчик запроса ---------- */
+
+export interface Deps {
+  env: Env
+  fetch: typeof fetch
+  store: CounterStore
+  health: Health
+  now: () => number
+  log?: (m: string) => void
+}
+
+const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers },
+  })
+
+export function clientIp(req: Request): string {
+  return req.headers.get('x-real-ip')?.trim()
+    || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    || 'unknown'
+}
+
+export async function handle(req: Request, deps: Deps): Promise<Response> {
+  if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' }, { Allow: 'POST' })
+
+  /* только со страниц самого приложения: чужие сайты не должны гонять наш бесплатный лимит */
+  const origin = req.headers.get('origin')
+  if (origin) {
+    let host = ''
+    try { host = new URL(origin).host } catch { /* пустой host ниже даст отказ */ }
+    if (host !== new URL(req.url).host) return json(403, { error: 'forbidden_origin' })
+  }
+
+  const limits = loadLimits(deps.env)
+  const len = Number(req.headers.get('content-length'))
+  if (Number.isFinite(len) && len > limits.maxImageChars + 2000) return json(413, { error: 'too_large' })
+
+  let body: unknown
+  try { body = await req.json() } catch { return json(400, { error: 'bad_request', message: 'не JSON' }) }
+  const v = validateRequest(body, limits.maxImageChars)
+  if (!v.ok) return json(v.message.includes('большая') ? 413 : 400, { error: 'bad_request', message: v.message })
+
+  const providers = loadProviders(deps.env)
+  if (!providers.length) return json(503, { error: 'not_configured' })
+
+  const now = deps.now()
+  let lim: LimitResult
+  try {
+    lim = await checkLimits(deps.store, clientIp(req), deps.env.AI_RATE_SALT ?? '', limits, now)
+  } catch (e) {
+    /* сбой общего хранилища не должен отключать AI: считаем лимит в памяти этого экземпляра */
+    deps.log?.(`vision: счётчики недоступны: ${(e as Error).message}`)
+    lim = await checkLimits(fallbackStore, clientIp(req), deps.env.AI_RATE_SALT ?? '', limits, now)
+  }
+  if (!lim.ok) return json(429, { error: 'limit', scope: lim.scope, resetAt: lim.resetAt })
+
+  const out = await runVision(deps.fetch, providers, v.value, deps.health, now, 25_000, deps.log)
+  if (!out.ok) return json(503, { error: 'busy', retryAfterS: out.retryAfterS }, { 'Retry-After': String(out.retryAfterS) })
+  return json(200, { result: out.result })
+}
+
+const fallbackStore = memoryStore()

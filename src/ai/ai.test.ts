@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest'
+import { AIError, parseProxyResponse } from './client'
+import { fitSize } from './image'
+
+const kindOf = (status: number, body: unknown) => {
+  try { parseProxyResponse(status, body) } catch (e) { return e instanceof AIError ? e.kind : 'не AIError' }
+  return 'нет ошибки'
+}
+const messageOf = (status: number, body: unknown) => {
+  try { parseProxyResponse(status, body) } catch (e) { return (e as Error).message }
+  return ''
+}
+
+describe('parseProxyResponse', () => {
+  it('200 с result возвращает результат', () => {
+    expect(parseProxyResponse(200, { result: { bean: { name: 'x' } } })).toEqual({ bean: { name: 'x' } })
+  })
+  it('200 без result — ошибка, а не молчаливое «пусто»', () => {
+    expect(kindOf(200, {})).toBe('bad')
+    expect(kindOf(200, { result: 'строка' })).toBe('bad')
+  })
+  it('лимит на человека и общий лимит различаются и подсказывают про свой ключ', () => {
+    const resetAt = '2026-10-25T00:00:00.000Z'
+    expect(kindOf(429, { error: 'limit', scope: 'user', resetAt })).toBe('limit_user')
+    expect(kindOf(429, { error: 'limit', scope: 'global', resetAt })).toBe('limit_global')
+    expect(messageOf(429, { error: 'limit', scope: 'user', resetAt })).toContain('свой ключ')
+  })
+  it('503: перегрузка и «не настроено» — разные ошибки', () => {
+    expect(kindOf(503, { error: 'busy' })).toBe('busy')
+    expect(kindOf(503, { error: 'not_configured' })).toBe('unavailable')
+  })
+  it('404/405 (нет серверной функции, например в vite dev) — понятное сообщение', () => {
+    expect(kindOf(404, null)).toBe('unavailable')
+    expect(messageOf(405, null)).toContain('vercel dev')
+  })
+  it('прочее: 413, 400 с пояснением, 500', () => {
+    expect(kindOf(413, {})).toBe('bad')
+    expect(messageOf(400, { message: 'нужна картинка' })).toContain('нужна картинка')
+    expect(kindOf(500, null)).toBe('busy')
+  })
+})
+
+describe('fitSize', () => {
+  it('уменьшает по длинной стороне с сохранением пропорций', () => {
+    expect(fitSize(4000, 3000)).toEqual({ w: 1024, h: 768 })
+    expect(fitSize(3000, 4000)).toEqual({ w: 768, h: 1024 })
+  })
+  it('маленькие картинки не увеличивает', () => {
+    expect(fitSize(500, 300)).toEqual({ w: 500, h: 300 })
+  })
+  it('не даёт нулевой стороны', () => {
+    expect(fitSize(10000, 1)).toEqual({ w: 1024, h: 1 })
+  })
+})

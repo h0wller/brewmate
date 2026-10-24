@@ -5,12 +5,13 @@ import { emptyData, mergeData, sanitizeData } from './sync/merge'
 import { CoffeeJSONError, COFFEEJSON_MEDIA_TYPE, parseCoffeeJSON, toCoffeeJSON } from './coffeejson/coffeejson'
 import { downloadText } from './download'
 
-export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder }: {
+export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder, onOpenAI }: {
   initial: SyncConfig | null
   local: SyncData
   onMerged: (d: SyncData) => void
   onClose: () => void
   onOpenGrinder: () => void
+  onOpenAI: () => void
 }) {
   const [c, setC] = useState<SyncConfig>(initial ?? { url: '', anonKey: '', code: '' })
   const [msg, setMsg] = useState('')
@@ -83,6 +84,7 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder 
       <h1>Настройки</h1>
 
       <button className="btn secondary" style={{ marginTop: 0 }} onClick={onOpenGrinder}>🔧 Моя кофемолка</button>
+      <button className="btn secondary" onClick={onOpenAI}>🤖 AI: свой ключ (для продвинутых)</button>
 
       <div className="small">Данные и синхронизация ☁️</div>
 

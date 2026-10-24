@@ -4,9 +4,9 @@ import {
   LEVEL_LABEL, METHODS, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
 import type { MethodKey, RoastLevel } from './beans/engine'
-import { askVision, buildPackagePrompt, fileToBase64, loadAIConfig } from './ai/client'
+import { AIError, loadAIConfig, recognizePackage } from './ai/client'
+import { prepareImage } from './ai/image'
 import type { AIConfig } from './ai/client'
-import { AISettings } from './AISettings'
 import { uid } from './storage'
 import { SIZE_LABEL, isGrindSize, nudgeText } from './grinders/size'
 import { grindFor, settingFor } from './grinders/profile'
@@ -31,10 +31,11 @@ const pickBean = (b: any, base: BeanProfile): BeanProfile => ({
   notes: typeof b?.notes === 'string' && b.notes ? b.notes : base.notes,
 })
 
-export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder }: {
+export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenAI }: {
   bean: BeanProfile
   profile: GrinderProfile
   onOpenGrinder: () => void
+  onOpenAI: () => void
   onChange: (b: BeanProfile) => void
   onBack: () => void
   onMakeRecipe: (r: Recipe) => void
@@ -43,8 +44,8 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   const [busy, setBusy] = useState(false)
   const [busyAI, setBusyAI] = useState(false)
   const [err, setErr] = useState('')
-  const [aiCfg, setAiCfg] = useState<AIConfig | null>(loadAIConfig)
-  const [showSettings, setShowSettings] = useState(false)
+  const [aiCfg] = useState<AIConfig | null>(loadAIConfig)
+  const [errKind, setErrKind] = useState<AIError['kind'] | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pkgRef = useRef<HTMLInputElement>(null)
 
@@ -63,11 +64,10 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   }
 
   const onPackage = async (f: File) => {
-    if (!aiCfg) return
-    setBusyAI(true); setErr('')
+    setBusyAI(true); setErr(''); setErrKind(null)
     try {
-      const img = await fileToBase64(f)
-      const out = await askVision(aiCfg, img, buildPackagePrompt(METHODS[method].label))
+      const img = await prepareImage(f)
+      const out = await recognizePackage(aiCfg, METHODS[method].label, img)
       const nb = pickBean(out.bean, bean)
       onChange(nb)
       const r = out.recipe ?? {}
@@ -84,7 +84,10 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
         steps: sanitizeSteps(r.steps),
         createdAt: Date.now(),
       })
-    } catch (e) { setErr((e as Error).message) }
+    } catch (e) {
+      setErr((e as Error).message)
+      setErrKind(e instanceof AIError ? e.kind : null)
+    }
     setBusyAI(false)
   }
 
@@ -133,27 +136,26 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
       </div>
 
       <div className="small">AI</div>
-      {showSettings ? (
-        <AISettings
-          initial={aiCfg}
-          onDone={c => { setAiCfg(c); setShowSettings(false) }}
-          onCancel={() => setShowSettings(false)}
-        />
-      ) : (
-        <div className="card" style={{ display: 'block', cursor: 'default' }}>
-          <input ref={pkgRef} type="file" accept="image/*" capture="environment" hidden
-            onChange={e => { const f = e.target.files?.[0]; if (f) onPackage(f); e.currentTarget.value = '' }} />
-          <button className="btn" onClick={() => aiCfg ? pkgRef.current?.click() : setShowSettings(true)}>
-            {busyAI ? '🤖 Думаю…' : '🤖 Сфоткать пачку → AI-рецепт'}
-          </button>
-          <div className="small" style={{ margin: '8px 0 0' }}>
-            {aiCfg ? `${aiCfg.provider} · ${aiCfg.model}` : 'AI не настроен'} ·{' '}
-            <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={() => setShowSettings(true)}>настроить</span>
-          </div>
+      <div className="card" style={{ display: 'block', cursor: 'default' }}>
+        <input ref={pkgRef} type="file" accept="image/*" capture="environment" hidden
+          onChange={e => { const f = e.target.files?.[0]; if (f) onPackage(f); e.currentTarget.value = '' }} />
+        <button className="btn" disabled={busyAI} onClick={() => pkgRef.current?.click()}>
+          {busyAI ? '🤖 Думаю…' : '🤖 Сфоткать пачку → AI-рецепт'}
+        </button>
+        <div className="small" style={{ margin: '8px 0 0' }}>
+          {aiCfg
+            ? `Свой ключ: ${aiCfg.provider} · ${aiCfg.model}`
+            : 'Бесплатно, несколько раз в день. Без лимита — со своим ключом.'}{' '}
+          <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={onOpenAI}>
+            {aiCfg ? 'изменить' : 'свой ключ'}
+          </span>
         </div>
-      )}
+      </div>
 
       {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
+      {(errKind === 'limit_user' || errKind === 'limit_global') && (
+        <button className="btn secondary" onClick={onOpenAI}>🔑 Добавить свой ключ</button>
+      )}
 
       <div className="small">Метод</div>
       <div className="lotChips">
