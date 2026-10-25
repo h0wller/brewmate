@@ -31,3 +31,6 @@ dist-ssr
 # Артефакты Google AI Studio (не часть проекта)
 .aistudio/
 /metadata.json
+
+# Резервные копии при установке agent-стартового комплекта
+.backup-agent-starter-*/
