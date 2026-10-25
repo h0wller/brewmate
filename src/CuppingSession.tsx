@@ -62,9 +62,9 @@ export function CuppingSessionView({ session, onChange, onBack }: {
         <div className="attrRow" key={a.key}>
           <span className="lbl">{a.label}</span>
           <div className="stepper">
-            <button onClick={() => setQ(a.key, (lot.quality[a.key] ?? minQ) - step)}>−</button>
+            <button aria-label={`${a.label}: меньше`} onClick={() => setQ(a.key, (lot.quality[a.key] ?? minQ) - step)}>−</button>
             <span className="val">{q(lot.quality[a.key] ?? minQ)}</span>
-            <button onClick={() => setQ(a.key, (lot.quality[a.key] ?? minQ) + step)}>+</button>
+            <button aria-label={`${a.label}: больше`} onClick={() => setQ(a.key, (lot.quality[a.key] ?? minQ) + step)}>+</button>
           </div>
         </div>
       ))}
@@ -75,7 +75,8 @@ export function CuppingSessionView({ session, onChange, onBack }: {
           <span className="lbl">{c.label}</span>
           <div className="cups">
             {lot.cups[c.key].map((on, i) => (
-              <button key={i} className={'cupBtn' + (on ? ' on' : '')} onClick={() => toggleCup(c.key, i)}>
+              <button key={i} className={'cupBtn' + (on ? ' on' : '')} aria-pressed={on}
+                aria-label={`${c.label}: чашка ${i + 1}`} onClick={() => toggleCup(c.key, i)}>
                 {i + 1}
               </button>
             ))}
@@ -91,17 +92,18 @@ export function CuppingSessionView({ session, onChange, onBack }: {
             {d.type === 'taint' ? 'Taint' : 'Fault'}
           </button>
           <div className="stepper">
-            <button onClick={() => setDef(d.id, { intensity: Math.max(1, d.intensity - 1) })}>−</button>
+            <button aria-label="Интенсивность: меньше" onClick={() => setDef(d.id, { intensity: Math.max(1, d.intensity - 1) })}>−</button>
             <span className="val">{d.intensity}</span>
-            <button onClick={() => setDef(d.id, { intensity: Math.min(3, d.intensity + 1) })}>+</button>
+            <button aria-label="Интенсивность: больше" onClick={() => setDef(d.id, { intensity: Math.min(3, d.intensity + 1) })}>+</button>
           </div>
           <div className="stepper">
-            <button onClick={() => setDef(d.id, { cups: Math.max(1, d.cups - 1) })}>−</button>
+            <button aria-label="Чашек с дефектом: меньше" onClick={() => setDef(d.id, { cups: Math.max(1, d.cups - 1) })}>−</button>
             <span className="val">{d.cups}</span>
-            <button onClick={() => setDef(d.id, { cups: Math.min(5, d.cups + 1) })}>+</button>
+            <button aria-label="Чашек с дефектом: больше" onClick={() => setDef(d.id, { cups: Math.min(5, d.cups + 1) })}>+</button>
           </div>
           <span className="lbl" style={{ textAlign: 'right' }}>−{q(defectPoints(d))}</span>
-          <button className="x" onClick={() => update({ defects: lot.defects.filter(x => x.id !== d.id) })}>×</button>
+          <button className="x" aria-label="Удалить дефект"
+            onClick={() => update({ defects: lot.defects.filter(x => x.id !== d.id) })}>×</button>
         </div>
       ))}
       <button className="btn secondary"

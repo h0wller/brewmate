@@ -71,6 +71,7 @@ export function LogView({ log, beans, canRepeat, onChange, onBack, onRepeat, onD
       <div className="lotChips">
         {[1, 2, 3, 4, 5].map(n => (
           <button key={n} className={'chip' + (log.rating === n ? ' on' : '')}
+            aria-pressed={log.rating === n} aria-label={`Оценка: ${n} из 5`}
             onClick={() => set({ rating: log.rating === n ? undefined : n })}>
             {'★'.repeat(n)}
           </button>

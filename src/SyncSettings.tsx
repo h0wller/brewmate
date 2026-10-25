@@ -99,7 +99,7 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder,
       <div className="row"><label>Код</label>
         <input value={c.code} onChange={e => setC({ ...c, code: e.target.value })} placeholder="BM-…" />
         <button className="btn secondary" style={{ width: 'auto', margin: 0, padding: '10px 14px' }}
-          onClick={() => setC({ ...c, code: genCode() })}>🎲</button>
+          aria-label="Сгенерировать код" onClick={() => setC({ ...c, code: genCode() })}>🎲</button>
       </div>
 
       {msg && <div className="small" style={{ wordBreak: 'break-word', whiteSpace: 'pre-line' }}>{msg}</div>}
