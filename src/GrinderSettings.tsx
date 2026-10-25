@@ -6,11 +6,13 @@ import type { GrindSize } from './grinders/size'
 import { getGrinderScale } from './grinders/presets'
 import { factoryCalibration, hasCalibration, withGrinder, withRedClix } from './grinders/profile'
 import { GrinderConverter } from './GrinderConverter'
+import { clickableProps } from './a11y'
 
-export function GrinderSettings({ profile, onChange, onBack }: {
+export function GrinderSettings({ profile, onChange, onBack, onOpenGrindHelp }: {
   profile: GrinderProfile
   onChange: (p: GrinderProfile) => void
   onBack: () => void
+  onOpenGrindHelp: () => void
 }) {
   const [q, setQ] = useState('')
   const [custom, setCustom] = useState('')
@@ -50,6 +52,14 @@ export function GrinderSettings({ profile, onChange, onBack }: {
     <div>
       <button className="back" onClick={onBack}>← Назад</button>
       <h1>Моя кофемолка 🔧</h1>
+
+      <div className="card" {...clickableProps(onOpenGrindHelp)}>
+        <div className="grow">
+          <div>📷 Проверить помол по фото</div>
+          <div className="meta">Приложение измерит частицы и скажет, крупнее или мельче; по замерам выучит твою шкалу</div>
+        </div>
+        <span style={{ color: '#4b8ef1', fontSize: 14 }}>открыть →</span>
+      </div>
 
       <div className="card" style={{ cursor: 'default', display: 'block' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>

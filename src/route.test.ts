@@ -9,6 +9,7 @@ const ALL: Route[] = [
   { name: 'edit', id: 'abc123' },
   { name: 'settings' },
   { name: 'grinder' },
+  { name: 'grind' },
   { name: 'ai' },
   { name: 'beans' },
   { name: 'bean', id: 'b1' },
@@ -47,6 +48,7 @@ describe('route', () => {
     expect(tabOf({ name: 'timer', id: 'x' })).toBe('brew')
     expect(tabOf({ name: 'settings' })).toBe('brew')
     expect(tabOf({ name: 'grinder' })).toBe('brew')
+    expect(tabOf({ name: 'grind' })).toBe('brew')
     expect(tabOf({ name: 'bean', id: 'x' })).toBe('bean')
     expect(tabOf({ name: 'session', id: 'x' })).toBe('cup')
     expect(tabOf({ name: 'journal' })).toBe('log')
