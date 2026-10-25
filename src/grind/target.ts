@@ -1,5 +1,5 @@
-import { GRIND_SIZES } from '../grinders/size'
-import type { GrindSize } from '../grinders/size'
+import { GRIND_SIZES } from '../grinders/size.js'
+import type { GrindSize } from '../grinders/size.js'
 
 /* Ориентиры D50 (по объёму) для уровней крупности, мкм. Это правила большого пальца, а не
    измерения: источник не установлен, значения пересекаются намеренно. Применяются, пока у пользователя

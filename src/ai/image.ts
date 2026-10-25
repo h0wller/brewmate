@@ -41,3 +41,19 @@ export async function prepareImage(file: File): Promise<string> {
     return raw
   }
 }
+
+/* Уже загруженный снимок (пиксели с холста) → JPEG для AI, тот же предел размера, что и у фото пачки */
+export function imageDataToJpeg(img: ImageData): string {
+  const src = document.createElement('canvas')
+  src.width = img.width; src.height = img.height
+  src.getContext('2d')!.putImageData(img, 0, 0)
+  for (const [side, q] of [[MAX_SIDE, 0.8], [768, 0.7]] as const) {
+    const { w, h } = fitSize(img.width, img.height, side)
+    const dst = document.createElement('canvas')
+    dst.width = w; dst.height = h
+    dst.getContext('2d')!.drawImage(src, 0, 0, w, h)
+    const out = dst.toDataURL('image/jpeg', q)
+    if (out.length <= MAX_DATA_URL_CHARS) return out
+  }
+  throw new Error('слишком большое фото')
+}
