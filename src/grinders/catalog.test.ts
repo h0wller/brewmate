@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CATALOG, CATALOG_SOURCE, findGrinder, searchGrinders } from './catalog'
+import { CATALOG, CATALOG_SOURCE, findGrinder, isRegistryGrinder, searchGrinders } from './catalog'
 
 describe('каталог кофемолок (CoffeeJSON, CC0)', () => {
   it('источник и лицензия указаны', () => {
@@ -19,6 +19,12 @@ describe('каталог кофемолок (CoffeeJSON, CC0)', () => {
   it('псевдонимы не совпадают с id других записей', () => {
     const ids = new Set(CATALOG.map(g => g.id))
     for (const g of CATALOG) for (const a of g.aliases ?? []) expect(ids.has(a)).toBe(false)
+  })
+
+  it('реестр CoffeeJSON и ручные добавки различаются', () => {
+    expect(isRegistryGrinder('comandante-c40')).toBe(true)
+    expect(isRegistryGrinder('comandante-c60')).toBe(false)
+    expect(findGrinder('comandante-c40-mk4')?.id).toBe('comandante-c40')
   })
 
   it('в каталоге есть известные модели', () => {

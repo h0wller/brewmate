@@ -2,6 +2,11 @@ import type { GrindSize } from './size'
 import { GRIND_SIZES } from './size'
 import { findGrinder } from './catalog'
 
+/* ВНИМАНИЕ: числа в GRINDER_PRESETS — ориентиры, а не измерения. Источник не указан и не проверен
+   (таблица попала в проект из генерации ИИ). Нельзя показывать их как «точные клики»: в интерфейсе они
+   подаются как «≈ ориентир», а калибровка пользователя всегда главнее (см. smartSettingFor).
+   Добавлять сюда модель можно только с источником в комментарии; тест presets.test.ts проверяет
+   внутреннюю согласованность (монотонность, диапазон шкалы). */
 export interface GrinderScale {
   unit: string // 'кл.' | 'дел.' | 'ст.' | 'об.' | 'мкм'
   /** Значения на шкале кофемолки для 7 уровней:
@@ -116,7 +121,6 @@ export const GRINDER_PRESETS: Record<string, GrinderScale> = {
   'option-o-lagom-p100': { unit: 'дел.', points: [0.8, 1.7, 5.0, 6.0, 7.0, 8.2, 9.2], decimals: 1, burrs: 'flat', dialRange: '0–10' },
 
   // ================= Mahlkönig =================
-  'mahlkonig-e65s':      { unit: 'дел.', points: [0.5, 1.5, 4.5, 5.5, 6.5, 7.5, 8.5], decimals: 1, burrs: 'flat', dialRange: '0–8' },
   'mahlkonig-e80':       { unit: 'дел.', points: [1.0, 2.2, 5.5, 7.0, 8.5, 10.0, 12.0], decimals: 1, burrs: 'flat', dialRange: '0–12' },
   'mahlkonig-ek43':      { unit: 'дел.', points: [1.8, 3.7, 8.8, 9.8, 11.5, 14.1, 15.5], decimals: 1, burrs: 'flat', dialRange: '0–16' },
   'mahlkonig-guatemala': { unit: 'дел.', points: [1.0, 2.0, 4.5, 5.5, 6.8, 8.2, 9.5], decimals: 1, burrs: 'flat', dialRange: '1–10' },
@@ -127,10 +131,6 @@ export const GRINDER_PRESETS: Record<string, GrinderScale> = {
   'mazzer-philos':      { unit: 'дел.', points: [12, 22, 55, 68, 80, 95, 110], burrs: 'flat', dialRange: '0–120' },
   'mazzer-super-jolly': { unit: 'дел.', points: [1.0, 2.0, 4.8, 5.8, 6.8, 8.0, 9.0], decimals: 1, burrs: 'flat', dialRange: '0–10' },
   'mazzer-zm':          { unit: 'мкм', points: [180, 280, 580, 700, 820, 950, 1100], burrs: 'flat', dialRange: '0–1200 мкм' },
-
-  // ================= Niche =================
-  'niche-duo':  { unit: 'дел.', points: [6, 13, 27, 33, 39, 46, 52], burrs: 'flat', dialRange: '0–50' },
-  'niche-zero': { unit: 'дел.', points: [6, 14, 31.2, 38, 43, 50, 58], decimals: 1, burrs: 'conical', dialRange: '0–50' },
 
   // ================= OXO / Rancilio / Wilfa =================
   'oxo-brew-conical': { unit: 'дел.', points: [1.5, 3.0, 6.7, 8.5, 10.5, 12.5, 14.5], decimals: 1, burrs: 'conical', dialRange: '1–15' },
@@ -143,7 +143,6 @@ export const GRINDER_PRESETS: Record<string, GrinderScale> = {
   'timemore-c3':           { unit: 'кл.', points: [7, 9, 15, 18, 21, 24, 28], burrs: 'conical', dialRange: '0–36 кл.', coffeeOsDial: [12, 12] },
   'timemore-c3-esp':       { unit: 'кл.', points: [14, 21, 46, 54, 62, 72, 82], burrs: 'conical', dialRange: '0–90 кл. (23 мкм/кл, 30 кл./об.)', coffeeOsDial: [30, 10] },
   'timemore-chestnut-s3':  { unit: 'дел.', points: [1.2, 2.2, 5.2, 6.2, 7.2, 8.2, 9.0], decimals: 1, burrs: 'conical', dialRange: '0.0–9.0 (90 кл.)' },
-  'timemore-chestnut-x':   { unit: 'кл.', points: [4, 7, 15, 18, 20, 23, 26], burrs: 'conical', dialRange: '0–24 цифр' },
   'timemore-sculptor-064': { unit: 'дел.', points: [1.0, 2.2, 5.5, 7.0, 8.5, 10.5, 12.5], decimals: 1, burrs: 'flat', dialRange: '0–16' },
   'timemore-sculptor-078': { unit: 'дел.', points: [1.0, 2.0, 3.9, 6.0, 8.0, 11.0, 14.0], decimals: 1, burrs: 'flat', dialRange: '0–18' },
   'timemore-sculptor-078s':{ unit: 'дел.', points: [1.0, 2.5, 8.0, 10.0, 12.0, 14.0, 16.5], decimals: 1, burrs: 'flat', dialRange: '0–18' },
@@ -181,10 +180,8 @@ export function formatCoffeeOS(totalClicks: number, dial: [number, number]): str
   return `${rot}-${Math.round(rem)}`
 }
 
-/* Форматирует числовое значение на шкале кофемолки */
-function fmtVal(val: number, scale: GrinderScale, redClix?: boolean): string {
-  const mult = (redClix && scale.unit === 'кл.') ? 2 : 1
-  const v = val * mult
+/* Форматирует числовое значение на шкале кофемолки (value уже учитывает Red Clix) */
+function fmtVal(v: number, scale: GrinderScale, redClix?: boolean): string {
   const d = scale.decimals ?? 0
   const n = d === 0 ? Math.round(v) : Number(v.toFixed(d))
   const base = `${n} ${scale.unit}`
@@ -194,12 +191,12 @@ function fmtVal(val: number, scale: GrinderScale, redClix?: boolean): string {
   return base
 }
 
-/* Точная интерполяция по дробному coarseness (0..6) */
-export function presetSettingByCoarseness(
+/* Интерполяция по дробному coarseness (0..6): число на шкале кофемолки */
+function presetValue(
   grinderId: string | undefined,
   coarseness: number,
   redClix?: boolean,
-): string | undefined {
+): { value: number; scale: GrinderScale; red: boolean } | undefined {
   const scale = getGrinderScale(grinderId)
   if (!scale) return undefined
   const c = Math.max(0, Math.min(GRIND_SIZES.length - 1, coarseness))
@@ -207,8 +204,21 @@ export function presetSettingByCoarseness(
   const frac = c - i
   const p0 = scale.points[i]
   const p1 = scale.points[Math.min(GRIND_SIZES.length - 1, i + 1)]
-  const isC40 = grinderId === 'comandante-c40' || findGrinder(grinderId)?.id === 'comandante-c40'
-  return fmtVal(p0 + (p1 - p0) * frac, scale, isC40 ? redClix : undefined)
+  const red = Boolean(redClix) && isComandanteC40(grinderId)
+  return { value: (p0 + (p1 - p0) * frac) * (red ? 2 : 1), scale, red }
+}
+
+const isComandanteC40 = (id: string | undefined): boolean =>
+  id === 'comandante-c40' || findGrinder(id)?.id === 'comandante-c40'
+
+/* Интерполяция по дробному coarseness (0..6), строка для показа */
+export function presetSettingByCoarseness(
+  grinderId: string | undefined,
+  coarseness: number,
+  redClix?: boolean,
+): string | undefined {
+  const r = presetValue(grinderId, coarseness, redClix)
+  return r && fmtVal(r.value, r.scale, r.red)
 }
 
 export function presetSettingForSize(
@@ -237,11 +247,14 @@ export function parseDialValue(settingInput: string | number, scale?: GrinderSca
   if (typeof settingInput === 'number') {
     return isNaN(settingInput) ? null : settingInput
   }
-  const trimmed = settingInput.trim()
+  const trimmed = settingInput.replace(/^[≈~]\s*/, '').trim()
   if (!trimmed) return null
 
-  // CoffeeOS формат "Оборот-Цифра-Клик" (например, "1-4-5" или "1-4.5")
-  const rnc = trimmed.match(/^(\d+)[-–—:.](\d+)(?:[-–—:.](\d+))?/)
+  // CoffeeOS формат «Оборот-Цифра-Клик» (1-4-5, 1.4.5) или «Оборот-Клик» (1-6).
+  // Одиночная точка («1.5», «22.5») — это десятичная дробь, а не оборот.цифра.
+  const rnc = scale?.coffeeOsDial
+    ? trimmed.match(/^(\d+)[-–—:.](\d+)[-–—:.](\d+)(?!\d)/) ?? trimmed.match(/^(\d+)[-–—:](\d+)(?!\d)/)
+    : null
   if (rnc && scale?.coffeeOsDial) {
     const [clicksPerRot, numbersOnDial] = scale.coffeeOsDial
     const clicksPerNum = clicksPerRot / numbersOnDial
@@ -270,8 +283,7 @@ export function coarsenessFromSetting(
   const num = parseDialValue(settingInput, scale)
   if (num === null) return undefined
 
-  const isC40 = grinderId === 'comandante-c40' || findGrinder(grinderId)?.id === 'comandante-c40'
-  const mult = (isC40 && redClix) ? 2 : 1
+  const mult = (isComandanteC40(grinderId) && redClix) ? 2 : 1
   const effectivePoints = scale.points.map(p => p * mult)
 
   if (num <= effectivePoints[0]) {
@@ -301,14 +313,18 @@ export function convertGrindSetting(
   toGrinderId: string | undefined,
   fromRedClix?: boolean,
   toRedClix?: boolean,
-): { targetSetting: string; coarseness: number; size: GrindSize } | undefined {
+): { targetSetting: string; targetValue: number; coarseness: number; size: GrindSize } | undefined {
   const coarseness = coarsenessFromSetting(fromGrinderId, settingInput, fromRedClix)
   if (coarseness === undefined) return undefined
-  const targetSetting = presetSettingByCoarseness(toGrinderId, coarseness, toRedClix)
-  if (!targetSetting) return undefined
+  const target = presetValue(toGrinderId, coarseness, toRedClix)
+  if (!target) return undefined
+  const targetSetting = fmtVal(target.value, target.scale, target.red)
+  const dd = target.scale.decimals ?? 0
+  const targetValue = dd === 0 ? Math.round(target.value) : Number(target.value.toFixed(dd))
   const sizeIdx = Math.max(0, Math.min(GRIND_SIZES.length - 1, Math.round(coarseness)))
   return {
     targetSetting,
+    targetValue,
     coarseness,
     size: GRIND_SIZES[sizeIdx],
   }

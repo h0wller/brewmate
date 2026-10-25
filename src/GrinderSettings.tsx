@@ -3,7 +3,8 @@ import type { GrinderProfile } from './types'
 import { findGrinder, searchGrinders } from './grinders/catalog'
 import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
 import type { GrindSize } from './grinders/size'
-import { GRINDER_PRESETS, allPresetSettings } from './grinders/presets'
+import { getGrinderScale } from './grinders/presets'
+import { factoryCalibration, hasCalibration, withGrinder, withRedClix } from './grinders/profile'
 import { GrinderConverter } from './GrinderConverter'
 
 export function GrinderSettings({ profile, onChange, onBack }: {
@@ -19,11 +20,13 @@ export function GrinderSettings({ profile, onChange, onBack }: {
     ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id)
     : null
   const results = searchGrinders(q, 8)
-  const isComandante = profile.grinder?.id === 'comandante-c40'
-  const hasPreset = Boolean(profile.grinder?.id && GRINDER_PRESETS[profile.grinder.id])
+  const isComandante = findGrinder(profile.grinder?.id)?.id === 'comandante-c40'
+  const hasPreset = Boolean(getGrinderScale(profile.grinder?.id))
 
   const setGrinder = (id: string, label: string) => {
-    onChange({ ...profile, grinder: { id, label } })
+    if (profile.grinder && profile.grinder.id !== id && hasCalibration(profile)
+      && !window.confirm('Настройки помола прежней кофемолки будут сброшены. Продолжить?')) return
+    onChange(withGrinder(profile, id, label))
     setQ(''); setCustom('')
   }
 
@@ -36,16 +39,12 @@ export function GrinderSettings({ profile, onChange, onBack }: {
 
   const fillDefaults = () => {
     if (!profile.grinder?.id) return
-    const presets = allPresetSettings(profile.grinder.id, profile.redClix)
-    if (presets) {
-      onChange({ ...profile, calibration: presets })
-    }
+    if (hasCalibration(profile)
+      && !window.confirm('Твои настройки будут заменены ориентировочными значениями для этой модели. Заменить?')) return
+    onChange({ ...profile, calibration: factoryCalibration(profile.grinder.id, profile.redClix) })
   }
 
-  const toggleRedClix = () => {
-    const next = !profile.redClix
-    onChange({ ...profile, redClix: next })
-  }
+  const toggleRedClix = () => onChange(withRedClix(profile, !profile.redClix))
 
   return (
     <div>
@@ -85,7 +84,7 @@ export function GrinderSettings({ profile, onChange, onBack }: {
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, margin: 0 }}
           onClick={() => setShowConverter(s => !s)}
         >
-          🔄 {showConverter ? 'Скрыть конвертер помола' : 'Конвертер помола (BrewMark / CoffeeOS)'}
+          🔄 {showConverter ? 'Скрыть конвертер помола' : 'Конвертер помола (ориентировочно)'}
         </button>
         {showConverter && (
           <div style={{ marginTop: 10 }}>
@@ -124,14 +123,15 @@ export function GrinderSettings({ profile, onChange, onBack }: {
             style={{ background: '#2c2c31', color: '#4b8ef1', fontSize: 13, padding: '4px 10px' }}
             onClick={fillDefaults}
           >
-            ⚡️ Заполнить заводскими
+            ⚡️ Подставить ориентиры
           </button>
         )}
       </div>
       <div className="small" style={{ marginTop: 0 }}>
-        Универсального перевода между кофемолками нет: у разных моделей разные шкалы и жернова.
-        Поэтому впиши, что ставишь на своей кофемолке для каждого уровня — BrewMate подставит это в
-        рецепты и рекомендации. Заполнять все уровни не обязательно.
+        У разных моделей разные шкалы и жернова, поэтому точный перевод между кофемолками невозможен.
+        Впиши, что ставишь на своей для каждого уровня — BrewMate подставит это в рецепты и рекомендации.
+        Для известных моделей есть ориентиры («≈»): это усреднённые значения без замеров, твои настройки всегда главнее.
+        Заполнять все уровни не обязательно.
       </div>
       {GRIND_SIZES.map(size => (
         <div className="attrRow" key={size}>

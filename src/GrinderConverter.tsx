@@ -47,7 +47,8 @@ export function GrinderConverter({
         )}
       </div>
       <div className="small" style={{ margin: '0 0 12px' }}>
-        Мгновенно переводит клики и деления между любыми моделями (как на BrewMark / CoffeeOS).
+        Ориентировочно переводит клики и деления между моделями по усреднённым шкалам. Это не замер:
+        жернова, обжарка и износ сдвигают результат, поэтому ориентируйся на вкус и свою калибровку.
       </div>
 
       {/* Кофемолка рецепта (ИСТОЧНИК) */}
@@ -128,10 +129,13 @@ export function GrinderConverter({
             onClick={() => {
               // Swap grinders
               const tmpId = fromId
-              const tmpVal = conversion?.targetSetting ? conversion.targetSetting.replace(/[^0-9.]/g, '') : fromValue
+              const tmpVal = conversion ? String(conversion.targetValue) : fromValue
               setFromId(toId)
               setToId(tmpId)
               setFromValue(tmpVal)
+              // режим Red Clix относится к кофемолке, а не к стороне — переносим вместе с ней
+              setFromRedClix(toRedClix)
+              setToRedClix(fromRedClix)
             }}
           >
             ⇅ поменять
@@ -180,7 +184,7 @@ export function GrinderConverter({
       {conversion ? (
         <div style={{ textAlign: 'center', background: '#0a3d91', borderRadius: 12, padding: '14px 10px', marginTop: 8 }}>
           <div className="small" style={{ color: '#cfd6e4', margin: '0 0 4px' }}>
-            {fromGrinder?.label} ({fromValue} {fromScale?.unit}) эквивалентно:
+            {fromGrinder?.label} ({fromValue} {fromScale?.unit}) ≈
           </div>
           <div style={{ fontSize: 32, fontWeight: 700, color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
             {conversion.targetSetting}
@@ -200,7 +204,7 @@ export function GrinderConverter({
               type="button"
               className="btn"
               style={{ marginTop: 10, background: '#fff', color: '#0a3d91' }}
-              onClick={() => onApply(conversion.targetSetting, toId)}
+              onClick={() => onApply(`≈ ${conversion.targetSetting}`, toId)}
             >
               Использовать в рецепте
             </button>
