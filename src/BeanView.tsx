@@ -17,10 +17,11 @@ import { clickableProps } from './a11y'
 
 const DOSES = [15, 18, 30, 60]
 
-export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenAI }: {
+export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI }: {
   bean: BeanProfile
   profile: GrinderProfile
   onOpenGrinder: () => void
+  onOpenGrindHelp: () => void
   onOpenAI: () => void
   onChange: (b: BeanProfile) => void
   onBack: () => void
@@ -232,6 +233,9 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
             </div>
           )}
           {rec.tips.map((t, i) => <div className="tip" key={i}>• {t}</div>)}
+          <div className="tip">
+            Не уверен в помоле? <button type="button" className="linkBtn" onClick={onOpenGrindHelp}>Проверить по фото</button>
+          </div>
           <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness), dose))}>
             Сделать рецепт → в таймер
           </button>

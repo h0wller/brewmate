@@ -194,9 +194,9 @@ export function RecipeEditor({
             onValue={n => setStep(i, { duration: n ?? 0 })} />
           <NumField className="pour" value={s.pourTo} decimal label={`Шаг ${i + 1}: вес, г`}
             onValue={n => setStep(i, { pourTo: n ?? 0 })} />
-          <input className="note" value={s.note ?? ''}
+          <input className="note" value={s.note ?? ''} aria-label={`Шаг ${i + 1}: заметка`}
             onChange={(e) => setStep(i, { note: e.target.value })} />
-          <button className="x"
+          <button className="x" aria-label={`Удалить шаг ${i + 1}`}
             onClick={() => update({ ...r, steps: r.steps.filter((_, j) => j !== i) })}>
             ×
           </button>
