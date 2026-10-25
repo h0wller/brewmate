@@ -5,8 +5,9 @@
 
    Весь ввод-вывод передаётся снаружи (fetch, хранилище счётчиков, часы), поэтому логика проверяется тестами. */
 
-import { buildPackagePrompt, isPromptWater } from '../src/ai/prompt.js'
-import type { PromptWater } from '../src/ai/prompt.js'
+import { buildGrindPrompt, buildPackagePrompt, isGrindTaste, isPromptWater } from '../src/ai/prompt.js'
+import type { GrindFacts, PromptWater } from '../src/ai/prompt.js'
+import { isGrindSize } from '../src/grinders/size.js'
 
 export type Env = Record<string, string | undefined>
 
@@ -46,7 +47,32 @@ export function loadLimits(env: Env): Limits {
 
 /* ---------- проверка запроса ---------- */
 
-export interface VisionRequest { methodLabel: string; image: string; water?: PromptWater; doseG?: number }
+export type VisionRequest =
+  | { task: 'package'; methodLabel: string; image: string; water?: PromptWater; doseG?: number }
+  | { task: 'grind'; image: string; grind: GrindFacts }
+
+const promptFor = (req: VisionRequest): string =>
+  req.task === 'grind'
+    ? buildGrindPrompt(req.grind)
+    : buildPackagePrompt(req.methodLabel, { water: req.water, doseG: req.doseG })
+
+const inRange = (v: unknown, lo: number, hi: number): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi
+
+/* Числа замера приходят от клиента: принимаем только правдоподобные и упорядоченные значения */
+export function validateGrind(g: unknown): GrindFacts | null {
+  if (!g || typeof g !== 'object') return null
+  const o = g as Record<string, unknown>
+  if (!isGrindSize(o.size)) return null
+  if (!inRange(o.d10, 20, 5000) || !inRange(o.d50, 20, 5000) || !inRange(o.d90, 20, 5000)) return null
+  if (!(o.d10 <= o.d50 && o.d50 <= o.d90)) return null
+  if (!inRange(o.n, 1, 100_000) || !Number.isInteger(o.n)) return null
+  if (o.taste !== undefined && !isGrindTaste(o.taste)) return null
+  return {
+    size: o.size, d10: o.d10, d50: o.d50, d90: o.d90, n: o.n,
+    ...(o.taste !== undefined ? { taste: o.taste } : {}),
+  }
+}
 
 const IMAGE_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/
 const LABEL_RE = /^[\p{L}\p{N} .\-·]{1,30}$/u
@@ -56,7 +82,15 @@ export function validateRequest(
 ): { ok: true; value: VisionRequest } | { ok: false; message: string } {
   if (!body || typeof body !== 'object') return { ok: false, message: 'ожидается JSON-объект' }
   const b = body as Record<string, unknown>
-  if (b.task !== 'package') return { ok: false, message: 'неизвестная задача' }
+  if (b.task !== 'package' && b.task !== 'grind') return { ok: false, message: 'неизвестная задача' }
+  if (typeof b.image !== 'string' || !IMAGE_RE.test(b.image)) {
+    return { ok: false, message: 'нужна картинка jpeg, png или webp в виде data URL' }
+  }
+  if (b.image.length > maxImageChars) return { ok: false, message: 'картинка слишком большая' }
+  if (b.task === 'grind') {
+    const grind = validateGrind(b.grind)
+    return grind ? { ok: true, value: { task: 'grind', image: b.image, grind } } : { ok: false, message: 'некорректные данные замера' }
+  }
   if (typeof b.methodLabel !== 'string' || !LABEL_RE.test(b.methodLabel)) {
     return { ok: false, message: 'некорректный метод заваривания' }
   }
@@ -64,14 +98,10 @@ export function validateRequest(
   if (b.doseG !== undefined && !(typeof b.doseG === 'number' && b.doseG >= 3 && b.doseG <= 500)) {
     return { ok: false, message: 'некорректная доза' }
   }
-  if (typeof b.image !== 'string' || !IMAGE_RE.test(b.image)) {
-    return { ok: false, message: 'нужна картинка jpeg, png или webp в виде data URL' }
-  }
-  if (b.image.length > maxImageChars) return { ok: false, message: 'картинка слишком большая' }
   return {
     ok: true,
     value: {
-      methodLabel: b.methodLabel, image: b.image,
+      task: 'package', methodLabel: b.methodLabel, image: b.image,
       ...(b.water !== undefined ? { water: b.water } : {}),
       ...(b.doseG !== undefined ? { doseG: b.doseG } : {}),
     },
@@ -176,7 +206,7 @@ async function callProvider(
         messages: [{
           role: 'user',
           content: [
-            { type: 'text', text: buildPackagePrompt(req.methodLabel, { water: req.water, doseG: req.doseG }) },
+            { type: 'text', text: promptFor(req) },
             { type: 'image_url', image_url: { url: req.image } },
           ],
         }],

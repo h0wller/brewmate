@@ -12,6 +12,10 @@ import type { Taste } from './grind/advise'
 import { fitCurve } from './grind/curve'
 import { curvePoints, loadChecks, saveChecks } from './grind/store'
 import { uid } from './storage'
+import { AIError, loadAIConfig } from './ai/client'
+import { askGrindOpinion, ISSUE_TEXT, opinionAgrees } from './ai/grind'
+import type { GrindOpinion } from './ai/grind'
+import { imageDataToJpeg } from './ai/image'
 
 const MAX_SIDE = 1600
 type Pt = { x: number; y: number }
@@ -52,6 +56,9 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
   const [seg, setSeg] = useState<Segmentation | null>(null)
   const [pxPerMm, setPxPerMm] = useState(0)
   const [saved, setSaved] = useState(false)
+  const [opinion, setOpinion] = useState<GrindOpinion | null>(null)
+  const [asking, setAsking] = useState(false)
+  const [aiErr, setAiErr] = useState('')
   const [checks, setChecks] = useState(loadChecks)
   const canvas = useRef<HTMLCanvasElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -94,7 +101,7 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
     try {
       await loadToCanvas(file, canvas.current!)
       canvas.current!.dataset.src = '1'
-      setPts([]); setStats(null); setSeg(null); setSaved(false); setStep('mark')
+      setPts([]); setStats(null); setSeg(null); setSaved(false); setOpinion(null); setAiErr(''); setStep('mark')
     } catch { setErr('Не удалось открыть фото. Попробуй снять ещё раз.') }
     setBusy(false)
   }
@@ -150,7 +157,23 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
     saveChecks(next); setChecks(next); setSaved(true)
   }
 
-  const retake = () => { setStep('setup'); setStats(null); setSeg(null); setSaved(false); setPts([]); setErr('') }
+  const askAI = async () => {
+    const img = original.current
+    if (!img || !stats || asking) return
+    setAsking(true); setAiErr('')
+    try {
+      const image = imageDataToJpeg(img)
+      setOpinion(await askGrindOpinion(loadAIConfig(), image, {
+        size, d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
+        ...(taste ? { taste } : {}),
+      }))
+    } catch (e) {
+      setAiErr(e instanceof AIError ? e.message : 'Не удалось получить второе мнение. Попробуй ещё раз.')
+    }
+    setAsking(false)
+  }
+
+  const retake = () => { setStep('setup'); setStats(null); setSeg(null); setSaved(false); setPts([]); setErr(''); setOpinion(null); setAiErr('') }
 
   return (
     <div>
@@ -254,6 +277,32 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
           {advice.notes.map((n, i) => <div key={i} className="small">• {n}</div>)}
           <div className="small">Зелёные кружки — найденные частицы. Если они лежат мимо крупинок, переснимай при другом освещении.</div>
           {setting === null && <div className="small">Укажи текущую настройку, чтобы сохранить замер и выучить шкалу кофемолки.</div>}
+          <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+            <b>Второе мнение ИИ</b> <span className="small" style={{ margin: 0 }}>необязательно</span>
+            {!opinion && (
+              <>
+                <div className="small" style={{ margin: '6px 0' }}>
+                  ИИ посмотрит снимок на мелкую пыль, комки и неравномерность. Размеры он не измеряет — берёт твои цифры.
+                  {loadAIConfig()?.apiKey ? 'Фото уйдёт напрямую выбранному AI-сервису (твой ключ) и нигде не сохраняется.' : 'Фото уйдёт на сервер BrewMate и AI-провайдеру и нигде не сохраняется; бесплатных запросов в день немного.'}
+                </div>
+                <button className="btn secondary" disabled={asking} onClick={askAI}>{asking ? 'Смотрю…' : 'Спросить ИИ'}</button>
+              </>
+            )}
+            {aiErr && <div className="small" style={{ color: '#ff6961' }}>{aiErr}</div>}
+            {opinion && (
+              <div style={{ marginTop: 6 }}>
+                {opinion.comment && <div>{opinion.comment}</div>}
+                {opinion.issues.length > 0 && (
+                  <div className="small" style={{ margin: '6px 0 0' }}>Заметил: {opinion.issues.map(i => ISSUE_TEXT[i]).join(', ')}.</div>
+                )}
+                {opinion.verdict === 'unsure' && <div className="small" style={{ margin: '6px 0 0' }}>По этому снимку ИИ судить не берётся.</div>}
+                {opinionAgrees(opinion, advice.verdict) === false && (
+                  <div className="small" style={{ margin: '6px 0 0' }}>ИИ и замер расходятся. Замеру можно верить больше: он считает частицы, а ИИ только смотрит.</div>
+                )}
+              </div>
+            )}
+          </div>
+
           <button className="btn" style={{ marginTop: 8 }} disabled={setting === null || saved} onClick={save}>
             {saved ? 'Замер сохранён' : 'Сохранить замер'}
           </button>
