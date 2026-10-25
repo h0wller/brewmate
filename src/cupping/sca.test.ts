@@ -37,4 +37,14 @@ describe('каппинг', () => {
     expect(q(7.5)).toBe('7.5')
     expect(q(7.256)).toBe('7.26')
   })
+
+  it('неполный лот: отсутствующий атрибут считается дефолтом, а не нулём', () => {
+    const coeLot = emptyLot('A')
+    delete coeLot.quality['clean']
+    expect(coeScore(coeLot).quality).toBe(63) // 9 атрибутов × 7
+
+    const scaLot = emptyLot('B')
+    delete scaLot.quality['body']
+    expect(scaScore(scaLot).quality).toBe(49) // 7 атрибутов × 7
+  })
 })
