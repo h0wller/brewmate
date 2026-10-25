@@ -77,6 +77,12 @@ describe('экспорт', () => {
     expect(r.method).toBe('other')
     expect(r.grind.grinder.label).toBe('Своя кофемолка')
   })
+  it('модель не из реестра уходит как custom с названием, алиас реестра — каноническим id, неизвестный id не трогаем', () => {
+    const out = (id: string) => (recipeToCoffeeJSON({ ...mine, grind: { grinder: { id } } }) as Record<string, any>).grind.grinder
+    expect(out('comandante-c60')).toEqual({ id: 'custom', label: 'Comandante C60 Baracuda' })
+    expect(out('comandante-c40-mk4')).toEqual({ id: 'comandante-c40' })
+    expect(out('some-future-registry-id')).toEqual({ id: 'some-future-registry-id' })
+  })
 })
 
 describe('импорт', () => {

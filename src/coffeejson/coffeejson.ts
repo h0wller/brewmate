@@ -8,6 +8,7 @@
 
 import type { BrewStep, Grind, Recipe } from '../types'
 import { normalizeGrind } from '../grinders/grind'
+import { findGrinder, isRegistryGrinder } from '../grinders/catalog'
 import { stamp } from '../sync/merge'
 import { uid } from '../storage'
 
@@ -67,7 +68,16 @@ export function recipeToCoffeeJSON(r: Recipe): Record<string, unknown> {
     const g: Record<string, unknown> = {}
     if (r.grind.grinder) {
       const { id, label } = r.grind.grinder
-      g.grinder = id === 'custom' ? { id, label: label || 'Своя кофемолка' } : { id, ...(label ? { label } : {}) }
+      const known = findGrinder(id)
+      if (known && isRegistryGrinder(known.id)) {
+        // из реестра: отдаём канонический id (псевдонимы поколений сводим к модели реестра)
+        g.grinder = { id: known.id, ...(label ? { label } : {}) }
+      } else if (known || id === 'custom') {
+        // модель добавлена вручную и в реестре CoffeeJSON её id нет — другие приложения его не поймут
+        g.grinder = { id: 'custom', label: label || known?.label || 'Своя кофемолка' }
+      } else {
+        g.grinder = { id, ...(label ? { label } : {}) }
+      }
     }
     if (r.grind.setting) g.setting = r.grind.setting
     if (r.grind.size) g.size = r.grind.size
