@@ -105,6 +105,14 @@ export default function App() {
         <GrinderSettings profile={profile} onChange={setProfile} onBack={() => goBack({ name: 'settings' })} />
       )
 
+      case 'grind': return (
+        <GrindHelp
+          profile={profile}
+          onBack={() => goBack({ name: 'brew' })}
+          onOpenGrinder={() => navigate({ name: 'grinder' })}
+        />
+      )
+
       case 'ai': return (
         <div>
           <button className="back" onClick={() => goBack({ name: 'settings' })}>← Настройки</button>

@@ -215,3 +215,6 @@ textarea {
 .numGrid label { display: flex; flex-direction: column; gap: 4px; color: #98989f; font-size: 13px; }
 .numGrid input.num { width: 100%; }
 .row input.num { width: 82px; }
+
+/* помощь с помолом: группы чипов переносятся на новую строку */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
