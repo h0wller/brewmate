@@ -4,9 +4,10 @@ import {
   LEVEL_LABEL, METHODS, WATER_PROFILES, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from './beans/engine'
-import { askVision, buildPackagePrompt, fileToBase64, loadAIConfig } from './ai/client'
+import { AIError, loadAIConfig, recognizePackage } from './ai/client'
+import { prepareImage } from './ai/image'
+import { fitStepsToWater } from './ai/fit'
 import type { AIConfig } from './ai/client'
-import { AISettings } from './AISettings'
 import { uid } from './storage'
 import { SIZE_LABEL, GRIND_SIZES, isGrindSize, nudgeText } from './grinders/size'
 import { grindFor, smartSettingFor } from './grinders/profile'
@@ -32,10 +33,11 @@ const pickBean = (b: any, base: BeanProfile): BeanProfile => ({
   notes: typeof b?.notes === 'string' && b.notes ? b.notes : base.notes,
 })
 
-export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder }: {
+export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenAI }: {
   bean: BeanProfile
   profile: GrinderProfile
   onOpenGrinder: () => void
+  onOpenAI: () => void
   onChange: (b: BeanProfile) => void
   onBack: () => void
   onMakeRecipe: (r: Recipe) => void
@@ -46,8 +48,8 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   const [busy, setBusy] = useState(false)
   const [busyAI, setBusyAI] = useState(false)
   const [err, setErr] = useState('')
-  const [aiCfg, setAiCfg] = useState<AIConfig | null>(loadAIConfig)
-  const [showSettings, setShowSettings] = useState(false)
+  const [aiCfg] = useState<AIConfig | null>(loadAIConfig)
+  const [errKind, setErrKind] = useState<AIError['kind'] | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const pkgRef = useRef<HTMLInputElement>(null)
 
@@ -69,12 +71,10 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   }
 
   const onPackage = async (f: File) => {
-    if (!aiCfg) return
-    setBusyAI(true); setErr('')
+    setBusyAI(true); setErr(''); setErrKind(null)
     try {
-      const img = await fileToBase64(f)
-      const prompt = buildPackagePrompt(METHODS[method].label, WATER_PROFILES[water].label)
-      const out = await askVision(aiCfg, img, prompt)
+      const img = await prepareImage(f)
+      const out = await recognizePackage(aiCfg, METHODS[method].label, img, { water, doseG })
       const nb = pickBean(out.bean, bean)
       onChange(nb)
       const r = out.recipe ?? {}
@@ -84,18 +84,22 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
       const aiCoarseness = isGrindSize(r.grindSize) ? GRIND_SIZES.indexOf(r.grindSize) + nbRec.nudge * 0.35 : nbRec.coarseness
       const recipeDose = +r.doseG || doseG
       const recipeRatio = +r.ratio || nbRec.ratio
+      const waterG = Math.round(recipeDose * recipeRatio)
       onMakeRecipe({
         id: uid(),
         title: r.title || `${nb.name || 'Зерно'} · AI · ${METHODS[method].label}`,
         method,
         doseG: recipeDose,
-        waterG: Math.round(recipeDose * recipeRatio),
+        waterG,
         tempC: Math.max(85, Math.min(98, +r.tempC || nbRec.temp)),
         grind: grindFor(profile, aiSize, aiCoarseness),
-        steps: sanitizeSteps(r.steps),
+        steps: fitStepsToWater(sanitizeSteps(r.steps), waterG),
         createdAt: Date.now(),
       })
-    } catch (e) { setErr((e as Error).message) }
+    } catch (e) {
+      setErr((e as Error).message)
+      setErrKind(e instanceof AIError ? e.kind : null)
+    }
     setBusyAI(false)
   }
 
@@ -132,7 +136,7 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
 
           <input ref={pkgRef} type="file" accept="image/*" capture="environment" hidden
             onChange={e => { const f = e.target.files?.[0]; if (f) onPackage(f); e.currentTarget.value = '' }} />
-          <button className="btn" style={{ marginTop: 0 }} onClick={() => aiCfg ? pkgRef.current?.click() : setShowSettings(true)}>
+          <button className="btn" style={{ marginTop: 0 }} disabled={busyAI} onClick={() => pkgRef.current?.click()}>
             {busyAI ? '🤖 Думаю…' : '🤖 Фото пачки (AI)'}
           </button>
         </div>
@@ -150,23 +154,21 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
               onClick={() => set({ roastLevel: l })}>{LEVEL_LABEL[l]}</button>
           ))}
         </div>
-        <div className="small" style={{ margin: '6px 0 0' }}>
-          {aiCfg ? `AI: ${aiCfg.provider} · ${aiCfg.model}` : 'AI для фото пачки не настроен'} ·{' '}
-          <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={() => setShowSettings(s => !s)}>
-            {showSettings ? 'скрыть' : 'настроить AI'}
-          </span>
-        </div>
       </div>
 
-      {showSettings && (
-        <AISettings
-          initial={aiCfg}
-          onDone={c => { setAiCfg(c); setShowSettings(false) }}
-          onCancel={() => setShowSettings(false)}
-        />
-      )}
+      <div className="small" style={{ margin: '0 0 8px' }}>
+        {aiCfg
+          ? `AI — свой ключ: ${aiCfg.provider} · ${aiCfg.model}`
+          : 'AI по фото пачки — бесплатно, несколько раз в день. Без лимита — со своим ключом.'}{' '}
+        <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={onOpenAI}>
+          {aiCfg ? 'изменить' : 'свой ключ'}
+        </span>
+      </div>
 
       {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
+      {(errKind === 'limit_user' || errKind === 'limit_global') && (
+        <button className="btn secondary" onClick={onOpenAI}>🔑 Добавить свой ключ</button>
+      )}
 
       <div className="small">2. Кофемолка</div>
       <div className="card" onClick={onOpenGrinder}>

@@ -17,6 +17,8 @@ import { JournalList } from './JournalList'
 import { LogView } from './LogView'
 import { loadSyncConfig } from './sync/sync'
 import { GrinderSettings } from './GrinderSettings'
+import { AISettings } from './AISettings'
+import { loadAIConfig } from './ai/client'
 import { formatGrind } from './grinders/grind'
 import { loadProfile, saveProfile } from './grinders/profile'
 import { tabOf } from './route'
@@ -95,11 +97,28 @@ export default function App() {
           }}
           onClose={() => goBack({ name: 'brew' })}
           onOpenGrinder={() => navigate({ name: 'grinder' })}
+          onOpenAI={() => navigate({ name: 'ai' })}
         />
       )
 
       case 'grinder': return (
         <GrinderSettings profile={profile} onChange={setProfile} onBack={() => goBack({ name: 'settings' })} />
+      )
+
+      case 'ai': return (
+        <div>
+          <button className="back" onClick={() => goBack({ name: 'settings' })}>← Настройки</button>
+          <h1>Расширенные настройки AI</h1>
+          <div className="small">
+            Обычно это не нужно: «Сфоткать пачку» работает бесплатно без настройки, но несколько раз в день.
+            Свой ключ снимает дневной лимит, и запросы идут напрямую в выбранный сервис.
+          </div>
+          <AISettings
+            initial={loadAIConfig()}
+            onDone={() => goBack({ name: 'settings' })}
+            onCancel={() => goBack({ name: 'settings' })}
+          />
+        </div>
       )
 
       case 'timer': {
@@ -150,6 +169,7 @@ export default function App() {
             bean={b}
             profile={profile}
             onOpenGrinder={() => navigate({ name: 'grinder' })}
+            onOpenAI={() => navigate({ name: 'ai' })}
             onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? stamp(nb) : x))}
             onBack={() => navigate({ name: 'beans' })}
             onMakeRecipe={r => {
