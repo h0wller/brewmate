@@ -159,6 +159,10 @@ export function recipeFromBean(
     { duration: 240, pourTo: water, note: 'настоять 4 мин, снять корку' },
     { duration: 30, pourTo: water, note: 'продавить' },
   ]
+  else if (method === 'cupping') steps = [
+    { duration: 240, pourTo: water, note: 'залить и настоять 4 мин' },
+    { duration: 60, pourTo: water, note: 'сломать корку, снять пену' },
+  ]
   else if (method === 'aero') steps = [
     { duration: 30, pourTo: water, note: 'залить и перемешать' },
     { duration: 90, pourTo: water, note: 'продавить' },

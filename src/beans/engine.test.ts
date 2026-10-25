@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { daysSince, levelFromAgtron, recommend } from './engine'
+import { METHODS, daysSince, levelFromAgtron, recipeFromBean, recommend } from './engine'
+import type { MethodKey } from './engine'
 import type { BeanProfile } from '../types'
 
 const bean = (p: Partial<BeanProfile> = {}): BeanProfile => ({ id: 'b', name: 'test', createdAt: 0, ...p })
@@ -104,5 +105,30 @@ describe('recommend', () => {
   it('крупность не выходит за шкалу', () => {
     const r = recommend(bean({ roastLevel: 'dark', process: 'natural', roastDate: '2026-10-21' }), 'french')
     expect(r.coarseness <= 6 && r.coarseness >= 0).toBe(true)
+  })
+})
+
+describe('recipeFromBean', () => {
+  const methods = Object.keys(METHODS) as MethodKey[]
+
+  it('для любого метода и дозы шаги имеют длительность, вес не убывает и заканчивается общей водой', () => {
+    for (const method of methods) for (const dose of [10, 15, 60]) {
+      const rec = recommend(bean(), method, 'balanced', dose)
+      const r = recipeFromBean(bean(), method, rec, { size: rec.size }, dose)
+      expect(r.waterG).toBe(Math.round(dose * rec.ratio))
+      let prev = 0
+      for (const st of r.steps) {
+        if (!(st.duration > 0)) throw new Error(`${method}: шаг «${st.note}» без длительности`)
+        if (st.pourTo < prev) throw new Error(`${method}: вес убывает`)
+        prev = st.pourTo
+      }
+      expect(r.steps.at(-1)?.pourTo).toBe(r.waterG)
+    }
+  })
+
+  it('каппинг: настаивание 4 минуты, а не блюм в 0 секунд', () => {
+    const rec = recommend(bean(), 'cupping')
+    const r = recipeFromBean(bean(), 'cupping', rec, { size: rec.size })
+    expect(r.steps[0].duration).toBe(240)
   })
 })
