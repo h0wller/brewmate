@@ -17,6 +17,7 @@ import { JournalList } from './JournalList'
 import { LogView } from './LogView'
 import { loadSyncConfig } from './sync/sync'
 import { GrinderSettings } from './GrinderSettings'
+import { GrindHelp } from './GrindHelp'
 import { AISettings } from './AISettings'
 import { loadAIConfig } from './ai/client'
 import { formatGrind } from './grinders/grind'
@@ -103,7 +104,7 @@ export default function App() {
       )
 
       case 'grinder': return (
-        <GrinderSettings profile={profile} onChange={setProfile} onBack={() => goBack({ name: 'settings' })} />
+        <GrinderSettings profile={profile} onChange={setProfile} onBack={() => goBack({ name: 'settings' })} onOpenGrindHelp={() => navigate({ name: 'grind' })} />
       )
 
       case 'grind': return (

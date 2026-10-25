@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PointerEvent } from 'react'
 import type { GrinderProfile } from './types'
 import { NumField } from './NumField'
 import { findGrinder } from './grinders/catalog'
@@ -88,8 +89,6 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
       }
     }
   }
-  useEffect(draw)
-
   const reload = async (file: File) => {
     setErr(''); setBusy(true)
     try {
@@ -114,7 +113,7 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
   }
   useEffect(() => { if (step !== 'setup') { repaint(); draw() } }, [pts, step, seg])
 
-  const tap = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const tap = (e: PointerEvent<HTMLCanvasElement>) => {
     if (step !== 'mark') return
     const cv = e.currentTarget, r = cv.getBoundingClientRect()
     const p = { x: ((e.clientX - r.left) / r.width) * cv.width, y: ((e.clientY - r.top) / r.height) * cv.height }
@@ -200,7 +199,7 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
             </ol>
           </div>
 
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden
+          <input ref={fileRef} type="file" accept="image/*" hidden
             onChange={e => { onFile(e.target.files?.[0]); e.target.value = '' }} />
           <button className="btn" style={{ marginTop: 12 }} disabled={busy} onClick={() => fileRef.current?.click()}>
             📷 Сфоткать помол
