@@ -179,6 +179,7 @@ export default function App() {
             bean={b}
             profile={profile}
             onOpenGrinder={() => navigate({ name: 'grinder' })}
+            onOpenGrindHelp={() => navigate({ name: 'grind' })}
             onOpenAI={() => navigate({ name: 'ai' })}
             onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? stamp(nb) : x))}
             onBack={() => navigate({ name: 'beans' })}
