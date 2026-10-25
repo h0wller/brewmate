@@ -1,5 +1,6 @@
 import type { BeanProfile } from './types'
 import { LEVEL_LABEL } from './beans/engine'
+import { clickableProps } from './a11y'
 
 export function BeansList({ beans, onOpen, onCreate, onDelete }: {
   beans: BeanProfile[]
@@ -12,11 +13,11 @@ export function BeansList({ beans, onOpen, onCreate, onDelete }: {
       <div className="header">
         <h1>Зерно 🫘</h1>
         <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 18px' }}
-          onClick={onCreate}>+</button>
+          aria-label="Добавить зерно" onClick={onCreate}>+</button>
       </div>
 
       {beans.map(b => (
-        <div className="card" key={b.id} onClick={() => onOpen(b.id)}>
+        <div className="card" key={b.id} {...clickableProps(() => onOpen(b.id))}>
           <div className="grow">
             <div>{b.name || 'Без названия'}</div>
             <div className="meta">
@@ -24,7 +25,8 @@ export function BeansList({ beans, onOpen, onCreate, onDelete }: {
                 .filter(Boolean).join(' · ') || 'нет данных'}
             </div>
           </div>
-          <button className="x" onClick={e => { e.stopPropagation(); onDelete(b.id) }}>×</button>
+          <button className="x" aria-label={`Удалить: ${b.name || 'Без названия'}`}
+            onClick={e => { e.stopPropagation(); onDelete(b.id) }}>×</button>
         </div>
       ))}
 

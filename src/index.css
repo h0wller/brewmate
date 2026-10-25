@@ -34,6 +34,8 @@ h1 { font-size: 26px; margin: 8px 0 14px; }
   display: flex; align-items: center; gap: 12px; cursor: pointer;
 }
 .card .meta { color: #98989f; font-size: 13px; margin-top: 2px; }
+/* кольцо фокуса видно только при навигации с клавиатуры */
+.card:focus-visible { outline: 2px solid #4b8ef1; outline-offset: 2px; }
 .grow { flex: 1; }
 .heart { background: none; border: 0; font-size: 20px; color: #8e8e93; padding: 6px; }
 .heart.on { color: #e0565c; }
@@ -96,6 +98,8 @@ input, textarea, select { font-size: 16px; }
 
 .small { color: #98989f; font-size: 13px; margin: 14px 0 6px; }
 .back { background: none; border: 0; color: #4b8ef1; font-size: 16px; padding: 4px 0; cursor: pointer; }
+/* ссылка внутри текста: настоящая кнопка (фокус, Enter/пробел), выглядит как текст */
+.linkBtn { background: none; border: 0; color: #4b8ef1; font: inherit; padding: 0; cursor: pointer; }
 /* ---------- Каппинг + нижние табы ---------- */
 #root { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
 

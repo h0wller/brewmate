@@ -1,6 +1,7 @@
 import type { BrewLog } from './types'
 import { fmt } from './useBrewTimer'
 import { fmtDate, stars } from './brewlog/format'
+import { clickableProps } from './a11y'
 
 export function JournalList({ logs, onOpen }: {
   logs: BrewLog[]
@@ -12,7 +13,7 @@ export function JournalList({ logs, onOpen }: {
       <div className="header"><h1>Журнал 📓</h1></div>
 
       {sorted.map(l => (
-        <div className="card" key={l.id} onClick={() => onOpen(l.id)}>
+        <div className="card" key={l.id} {...clickableProps(() => onOpen(l.id))}>
           <div className="grow">
             <div>{l.title}{l.rating ? <span className="stars"> {stars(l.rating)}</span> : null}</div>
             <div className="meta">

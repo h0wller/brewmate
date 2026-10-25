@@ -24,6 +24,7 @@ import { loadProfile, saveProfile } from './grinders/profile'
 import { tabOf } from './route'
 import type { Route } from './route'
 import { goBack, navigate, useRoute } from './useRoute'
+import { clickableProps } from './a11y'
 
 /* Запись по ссылке не найдена (удалена или ссылка устарела) */
 function NotFound({ to, label }: { to: Route; label: string }) {
@@ -235,19 +236,20 @@ export default function App() {
             <h1>BrewMate ☕</h1>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 14px' }}
-                onClick={() => navigate({ name: 'settings' })}>⚙️</button>
+                aria-label="Настройки" onClick={() => navigate({ name: 'settings' })}>⚙️</button>
               <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 18px' }}
-                onClick={() => navigate({ name: 'edit' })}>+</button>
+                aria-label="Новый рецепт" onClick={() => navigate({ name: 'edit' })}>+</button>
             </div>
           </div>
           {recipes.length === 0 && <div className="small">Пока пусто — создай первый рецепт ☕️</div>}
           {recipes.map(r => (
-            <div className="card" key={r.id} onClick={() => navigate({ name: 'timer', id: r.id })}>
+            <div className="card" key={r.id} {...clickableProps(() => navigate({ name: 'timer', id: r.id }))}>
               <div className="grow">
                 <div>{r.title}</div>
                 <div className="meta">{r.doseG} г · {r.waterG} г воды · {r.tempC}°C{r.grind ? ` · ${formatGrind(r.grind)}` : ''}</div>
               </div>
               <button className={'heart' + (r.favorite ? ' on' : '')}
+                aria-label={r.favorite ? 'Убрать из избранного' : 'В избранное'} aria-pressed={!!r.favorite}
                 onClick={e => {
                   e.stopPropagation()
                   setRecipes(rs => rs.map(x => x.id === r.id ? stamp({ ...x, favorite: !x.favorite }) : x))

@@ -13,6 +13,7 @@ import { grindFor, smartSettingFor } from './grinders/profile'
 import { findGrinder } from './grinders/catalog'
 import { NumField } from './NumField'
 import { inRange } from './numField'
+import { clickableProps } from './a11y'
 
 const DOSES = [15, 18, 30, 60]
 
@@ -130,7 +131,7 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
       {water && <div className="small" style={{ marginTop: 0 }}>{WATER_PROFILES[water].sub}</div>}
 
       <div className="small">4. Кофемолка</div>
-      <div className="card" onClick={onOpenGrinder}>
+      <div className="card" {...clickableProps(onOpenGrinder)}>
         <div className="grow">
           <div>🔧 {grinderName ?? 'Выбрать кофемолку'}</div>
           <div className="meta">
@@ -176,9 +177,9 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
           {aiCfg
             ? `AI — свой ключ: ${aiCfg.provider} · ${aiCfg.model}`
             : 'AI по фото пачки — бесплатно, несколько раз в день. Без лимита — со своим ключом.'}{' '}
-          <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={onOpenAI}>
+          <button type="button" className="linkBtn" onClick={onOpenAI}>
             {aiCfg ? 'изменить' : 'свой ключ'}
-          </span>
+          </button>
         </div>
       </div>
 
@@ -227,7 +228,7 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
           {!mySetting && (
             <div className="tip">
               {profile.grinder ? 'Для своей кофемолки можно указать клики' : 'Выбери кофемолку для расчёта кликов'} —{' '}
-              <span style={{ color: '#4b8ef1', cursor: 'pointer' }} onClick={onOpenGrinder}>указать</span>
+              <button type="button" className="linkBtn" onClick={onOpenGrinder}>указать</button>
             </div>
           )}
           {rec.tips.map((t, i) => <div className="tip" key={i}>• {t}</div>)}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Recipe, WeightSample } from './types'
 import { downsample, flowRateAt, recordSample } from './brewlog/curve'
+import { needsWakeLock, type TimerStatus } from './wakeLock'
 
 export const fmt = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
@@ -25,7 +26,7 @@ export function beep(times = 1) {
 }
 
 export function useBrewTimer(recipe: Recipe) {
-  const [status, setStatus] = useState<'idle' | 'run' | 'pause' | 'done'>('idle')
+  const [status, setStatus] = useState<TimerStatus>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [liveG, setLiveGState] = useState<number | null>(null)
   const [flow, setFlow] = useState<number | null>(null) // скорость вливания, г/с
@@ -38,7 +39,6 @@ export function useBrewTimer(recipe: Recipe) {
   }, [])
   const base = useRef(0)
   const startAt = useRef(0)
-  const wake = useRef<any>(null)
   const prevStep = useRef(-1)
 
   const total = recipe.steps.reduce((s, x) => s + x.duration, 0)
@@ -65,13 +65,45 @@ export function useBrewTimer(recipe: Recipe) {
         setElapsed(total)
         setStatus('done')
         beep(3)
-        wake.current?.release?.()
       } else {
         setElapsed(e)
       }
     }, 200)
     return () => clearInterval(id)
   }, [status, total])
+
+  /* Экран не гаснет, пока таймер идёт. Блокировка живёт ровно столько, сколько эффект:
+     пауза, завершение, сброс и уход с экрана снимают её через cleanup. Браузер сам
+     отпускает её, когда вкладка скрыта, поэтому берём заново на visibilitychange. */
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return
+    let sentinel: WakeLockSentinel | null = null
+    let cancelled = false
+
+    const acquire = async () => {
+      if (cancelled || !needsWakeLock(status, document.visibilityState)) return
+      if (sentinel && !sentinel.released) return
+      try {
+        const s = await navigator.wakeLock.request('screen')
+        // эффект мог закончиться или блокировка уже взята параллельным вызовом, пока ждали ответ
+        if (cancelled || (sentinel && !sentinel.released)) {
+          s.release().catch(() => {})
+          return
+        }
+        sentinel = s
+      } catch {
+        // не все браузеры поддерживают, а экономия заряда может быть запретом — таймер работает и так
+      }
+    }
+
+    void acquire()
+    document.addEventListener('visibilitychange', acquire)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', acquire)
+      sentinel?.release().catch(() => {})
+    }
+  }, [status])
 
   useEffect(() => {
     if (stepIndex !== prevStep.current) {
@@ -80,7 +112,7 @@ export function useBrewTimer(recipe: Recipe) {
     }
   }, [stepIndex, status])
 
-  const start = async () => {
+  const start = () => {
     base.current = 0
     samples.current = []
     setElapsed(0)
@@ -88,9 +120,6 @@ export function useBrewTimer(recipe: Recipe) {
     startAt.current = Date.now()
     setStatus('run')
     beep(1)
-    try {
-      wake.current = await (navigator as any).wakeLock?.request('screen')
-    } catch {}
   }
 
   const pause = () => {
@@ -108,7 +137,6 @@ export function useBrewTimer(recipe: Recipe) {
     samples.current = []
     setElapsed(0)
     setStatus('idle')
-    wake.current?.release?.()
   }
 
   return {

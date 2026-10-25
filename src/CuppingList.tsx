@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CuppingSession } from './types'
 import { emptyLot, q, scoreFor } from './cupping/sca'
 import { uid } from './storage'
+import { clickableProps } from './a11y'
 
 export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
   sessions: CuppingSession[]
@@ -31,6 +32,7 @@ export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
       <div className="header">
         <h1>Каппинг 🧪</h1>
         <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '10px 18px' }}
+          aria-label="Новый каппинг" aria-expanded={creating}
           onClick={() => setCreating(c => !c)}>+</button>
       </div>
 
@@ -43,9 +45,9 @@ export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
           <div className="row">
             <label>Лотов</label>
             <div className="stepper">
-              <button onClick={() => setN(v => Math.max(1, v - 1))}>−</button>
+              <button aria-label="Меньше лотов" onClick={() => setN(v => Math.max(1, v - 1))}>−</button>
               <span className="val">{n}</span>
-              <button onClick={() => setN(v => Math.min(8, v + 1))}>+</button>
+              <button aria-label="Больше лотов" onClick={() => setN(v => Math.min(8, v + 1))}>+</button>
             </div>
           </div>
           <div className="row">
@@ -60,14 +62,15 @@ export function CuppingList({ sessions, onOpen, onCreate, onDelete }: {
       {sessions.map(s => {
         const best = Math.max(...s.lots.map(l => scoreFor(s.form, l).total))
         return (
-          <div className="card" key={s.id} onClick={() => onOpen(s.id)}>
+          <div className="card" key={s.id} {...clickableProps(() => onOpen(s.id))}>
             <div className="grow">
               <div>{s.title}</div>
               <div className="meta">
                 {s.form.toUpperCase()} · {s.lots.length} лот. · лучший балл {q(best)}
               </div>
             </div>
-            <button className="x" onClick={e => { e.stopPropagation(); onDelete(s.id) }}>×</button>
+            <button className="x" aria-label={`Удалить: ${s.title}`}
+              onClick={e => { e.stopPropagation(); onDelete(s.id) }}>×</button>
           </div>
         )
       })}
