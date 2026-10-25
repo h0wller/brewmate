@@ -2,8 +2,12 @@ import type { Grind, GrinderProfile } from '../types'
 import type { GrindSize } from './size'
 import { GRIND_SIZES } from './size'
 import { normalizeGrind } from './grind'
+import { allPresetSettings, presetSettingByCoarseness, presetSettingForSize } from './presets'
 
 const KEY = 'brewmate.grinder.v1'
+
+/* Метка ориентировочной настройки: заводские пресеты не проверены, свои значения метки не имеют */
+export const APPROX = '≈'
 
 export const emptyProfile = (): GrinderProfile => ({ calibration: {} })
 
@@ -13,6 +17,7 @@ export function sanitizeProfile(raw: unknown): GrinderProfile {
   const profile = emptyProfile()
   const gr = normalizeGrind({ grinder: r.grinder })?.grinder
   if (gr) profile.grinder = gr
+  if (typeof r.redClix === 'boolean') profile.redClix = r.redClix
   const cal = (r.calibration && typeof r.calibration === 'object' ? r.calibration : {}) as Record<string, unknown>
   for (const size of GRIND_SIZES) {
     const v = cal[size]
@@ -31,15 +36,62 @@ export const saveProfile = (p: GrinderProfile): void => {
   catch (e) { console.warn('profile: не удалось сохранить', e) }
 }
 
-/* Настройка пользователя для уровня крупности (если он её указал) */
+/* Настройка пользователя для уровня крупности (если он её указал вручную) */
 export const settingFor = (p: GrinderProfile, size: GrindSize): string | undefined =>
   p.calibration[size]
 
-/* Помол для рецепта: уровень + настройка пользователя на этой кофемолке */
-export function grindFor(p: GrinderProfile, size: GrindSize): Grind {
+/* Умный подбор настройки: сначала ручная калибровка пользователя,
+   а если её нет — ориентир «≈ N» по усреднённой шкале кофемолки (с учётом дробного coarseness и Red Clix) */
+export function smartSettingFor(
+  p: GrinderProfile,
+  size: GrindSize,
+  coarseness?: number,
+): string | undefined {
+  const manual = p.calibration[size]
+  if (manual) return manual
+  const gid = p.grinder?.id
+  const preset = coarseness !== undefined
+    ? presetSettingByCoarseness(gid, coarseness, p.redClix)
+    : presetSettingForSize(gid, size, p.redClix)
+  return preset && `${APPROX} ${preset}`
+}
+
+/* Помол для рецепта: уровень + настройка пользователя (или авто-пресет кофемолки при переданном coarseness) */
+export function grindFor(p: GrinderProfile, size: GrindSize, coarseness?: number): Grind {
   const g: Grind = { size }
   if (p.grinder) g.grinder = p.grinder
-  const setting = settingFor(p, size)
+  const setting = coarseness !== undefined ? smartSettingFor(p, size, coarseness) : settingFor(p, size)
   if (setting) g.setting = setting
   return g
+}
+
+/* Ориентиры для всех уровней («≈ N кл.»): то, что подставляет кнопка «Подставить ориентиры» */
+export function factoryCalibration(id: string, redClix?: boolean): GrinderProfile['calibration'] {
+  const out: GrinderProfile['calibration'] = {}
+  const all = allPresetSettings(id, redClix)
+  for (const s of GRIND_SIZES) if (all[s]) out[s] = `${APPROX} ${all[s]}`
+  return out
+}
+
+/* Есть ли у пользователя хоть одна своя настройка */
+export const hasCalibration = (p: GrinderProfile): boolean =>
+  GRIND_SIZES.some(s => Boolean(p.calibration[s]))
+
+/* Смена кофемолки: настройки прежней модели к новой не подходят — сбрасываем их и Red Clix.
+   Тот же id (например, повторный выбор) профиль не трогает. */
+export function withGrinder(p: GrinderProfile, id: string, label: string): GrinderProfile {
+  if (p.grinder?.id === id) return { ...p, grinder: { id, label } }
+  return { calibration: {}, grinder: { id, label } }
+}
+
+/* Red Clix: если шкала была заполнена заводскими значениями, пересчитываем её под новый режим,
+   иначе после включения Red Clix остались бы клики вдвое меньше нужных. Свои значения не трогаем. */
+export function withRedClix(p: GrinderProfile, next: boolean): GrinderProfile {
+  const id = p.grinder?.id
+  if (id && hasCalibration(p)) {
+    const factory = factoryCalibration(id, p.redClix)
+    const isFactory = GRIND_SIZES.every(s => (p.calibration[s] ?? '') === (factory[s] ?? ''))
+    if (isFactory) return { ...p, redClix: next, calibration: factoryCalibration(id, next) }
+  }
+  return { ...p, redClix: next }
 }

@@ -1,8 +1,21 @@
-import { CATALOG } from './catalog.generated'
+import { CATALOG as REGISTRY } from './catalog.generated'
 import type { CatalogGrinder } from './catalog.generated'
+import { EXTRA_ALIASES, EXTRA_GRINDERS } from './catalog.extra'
 
-export { CATALOG, CATALOG_SOURCE } from './catalog.generated'
+export { CATALOG_SOURCE } from './catalog.generated'
 export type { CatalogGrinder } from './catalog.generated'
+
+/* Реестр CoffeeJSON (CC0) + модели и псевдонимы, добавленные вручную (catalog.extra.ts) */
+export const CATALOG: CatalogGrinder[] = [
+  ...REGISTRY.map(g => EXTRA_ALIASES[g.id]
+    ? { ...g, aliases: [...(g.aliases ?? []), ...EXTRA_ALIASES[g.id]] }
+    : g),
+  ...EXTRA_GRINDERS,
+]
+
+/* Модель из реестра CoffeeJSON: её id понимают другие приложения формата */
+export const isRegistryGrinder = (id: string | undefined): boolean =>
+  Boolean(id) && REGISTRY.some(g => g.id === id)
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9а-яё]+/g, ' ').trim()
 

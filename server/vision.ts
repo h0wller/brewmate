@@ -5,7 +5,8 @@
 
    Весь ввод-вывод передаётся снаружи (fetch, хранилище счётчиков, часы), поэтому логика проверяется тестами. */
 
-import { buildPackagePrompt } from '../src/ai/prompt.js'
+import { buildPackagePrompt, isPromptWater } from '../src/ai/prompt.js'
+import type { PromptWater } from '../src/ai/prompt.js'
 
 export type Env = Record<string, string | undefined>
 
@@ -45,7 +46,7 @@ export function loadLimits(env: Env): Limits {
 
 /* ---------- проверка запроса ---------- */
 
-export interface VisionRequest { methodLabel: string; image: string }
+export interface VisionRequest { methodLabel: string; image: string; water?: PromptWater; doseG?: number }
 
 const IMAGE_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/
 const LABEL_RE = /^[\p{L}\p{N} .\-·]{1,30}$/u
@@ -59,11 +60,22 @@ export function validateRequest(
   if (typeof b.methodLabel !== 'string' || !LABEL_RE.test(b.methodLabel)) {
     return { ok: false, message: 'некорректный метод заваривания' }
   }
+  if (b.water !== undefined && !isPromptWater(b.water)) return { ok: false, message: 'некорректная вода' }
+  if (b.doseG !== undefined && !(typeof b.doseG === 'number' && b.doseG >= 3 && b.doseG <= 500)) {
+    return { ok: false, message: 'некорректная доза' }
+  }
   if (typeof b.image !== 'string' || !IMAGE_RE.test(b.image)) {
     return { ok: false, message: 'нужна картинка jpeg, png или webp в виде data URL' }
   }
   if (b.image.length > maxImageChars) return { ok: false, message: 'картинка слишком большая' }
-  return { ok: true, value: { methodLabel: b.methodLabel, image: b.image } }
+  return {
+    ok: true,
+    value: {
+      methodLabel: b.methodLabel, image: b.image,
+      ...(b.water !== undefined ? { water: b.water } : {}),
+      ...(b.doseG !== undefined ? { doseG: b.doseG } : {}),
+    },
+  }
 }
 
 /* ---------- счётчики запросов ---------- */
@@ -164,7 +176,7 @@ async function callProvider(
         messages: [{
           role: 'user',
           content: [
-            { type: 'text', text: buildPackagePrompt(req.methodLabel) },
+            { type: 'text', text: buildPackagePrompt(req.methodLabel, { water: req.water, doseG: req.doseG }) },
             { type: 'image_url', image_url: { url: req.image } },
           ],
         }],

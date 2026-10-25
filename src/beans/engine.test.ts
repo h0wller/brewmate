@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { daysSince, levelFromAgtron, recommend } from './engine'
+import { METHODS, daysSince, levelFromAgtron, recipeFromBean, recommend } from './engine'
+import type { MethodKey } from './engine'
 import type { BeanProfile } from '../types'
 
 const bean = (p: Partial<BeanProfile> = {}): BeanProfile => ({ id: 'b', name: 'test', createdAt: 0, ...p })
@@ -76,8 +77,58 @@ describe('recommend', () => {
     expect([r.size, r.nudge, r.temp, r.ratio]).toEqual(['coarse', 1, 92, 15])
   })
 
+  it('анаэробная ферментация: помол крупнее и прохладнее', () => {
+    const r = recommend(bean({ process: 'anaerobic' }), 'v60')
+    expect(r.temp).toBe(91)
+    expect(r.nudge).toBe(1)
+    expect(r.tips.some(t => t.includes('Анаэробная'))).toBe(true)
+  })
+
+  it('мягкая вода: тоньше помол, горячее, плотнее пропорция', () => {
+    const r = recommend(bean(), 'v60', 'soft')
+    expect(r.temp).toBe(94)
+    expect(r.ratio).toBe(15.5)
+    expect(r.tips.some(t => t.includes('Мягкая вода'))).toBe(true)
+  })
+
+  it('жёсткая вода: прохладнее и помол крупнее', () => {
+    const r = recommend(bean(), 'v60', 'hard')
+    expect(r.temp).toBe(91)
+    expect(r.tips.some(t => t.includes('Жёсткая вода'))).toBe(true)
+  })
+
+  it('крупная доза (>= 40 г): помол чуть крупнее', () => {
+    const r = recommend(bean(), 'drip', 'balanced', 60)
+    expect(r.tips.some(t => t.includes('Большая порция (60 г)'))).toBe(true)
+  })
+
   it('крупность не выходит за шкалу', () => {
     const r = recommend(bean({ roastLevel: 'dark', process: 'natural', roastDate: '2026-10-21' }), 'french')
     expect(r.coarseness <= 6 && r.coarseness >= 0).toBe(true)
+  })
+})
+
+describe('recipeFromBean', () => {
+  const methods = Object.keys(METHODS) as MethodKey[]
+
+  it('для любого метода и дозы шаги имеют длительность, вес не убывает и заканчивается общей водой', () => {
+    for (const method of methods) for (const dose of [10, 15, 60]) {
+      const rec = recommend(bean(), method, 'balanced', dose)
+      const r = recipeFromBean(bean(), method, rec, { size: rec.size }, dose)
+      expect(r.waterG).toBe(Math.round(dose * rec.ratio))
+      let prev = 0
+      for (const st of r.steps) {
+        if (!(st.duration > 0)) throw new Error(`${method}: шаг «${st.note}» без длительности`)
+        if (st.pourTo < prev) throw new Error(`${method}: вес убывает`)
+        prev = st.pourTo
+      }
+      expect(r.steps.at(-1)?.pourTo).toBe(r.waterG)
+    }
+  })
+
+  it('каппинг: настаивание 4 минуты, а не блюм в 0 секунд', () => {
+    const rec = recommend(bean(), 'cupping')
+    const r = recipeFromBean(bean(), 'cupping', rec, { size: rec.size })
+    expect(r.steps[0].duration).toBe(240)
   })
 })

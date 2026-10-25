@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { AIError, parseProxyResponse } from './client'
+import { AIError, buildPackagePrompt, parseProxyResponse } from './client'
+import { fitStepsToWater } from './fit'
 import { fitSize } from './image'
 
 const kindOf = (status: number, body: unknown) => {
@@ -50,5 +51,32 @@ describe('fitSize', () => {
   })
   it('не даёт нулевой стороны', () => {
     expect(fitSize(10000, 1)).toEqual({ w: 1024, h: 1 })
+  })
+})
+
+describe('fitStepsToWater', () => {
+  const steps = [
+    { duration: 45, pourTo: 45, note: 'блюм' },
+    { duration: 30, pourTo: 150, note: '' },
+    { duration: 30, pourTo: 240, note: '' },
+  ]
+  it('доза 60 г вместо 15: шаги подтягиваются под всю воду, порядок сохраняется', () => {
+    const out = fitStepsToWater(steps, 960)
+    expect(out.map(s => s.pourTo)).toEqual([180, 600, 960])
+    expect(out.map(s => s.duration)).toEqual([45, 30, 30])
+  })
+  it('если уже совпало или вода некорректна — без изменений', () => {
+    expect(fitStepsToWater(steps, 240)).toBe(steps)
+    expect(fitStepsToWater(steps, 0)).toBe(steps)
+    expect(fitStepsToWater([], 240)).toEqual([])
+  })
+})
+
+describe('промпт: доза и вода', () => {
+  it('подставляет дозу и воду пользователя', () => {
+    const p = buildPackagePrompt('V60', { doseG: 60, water: 'hard' })
+    expect(p.includes('доза 60 г')).toBe(true)
+    expect(p.includes('жёсткая')).toBe(true)
+    expect(buildPackagePrompt('V60').includes('доза 15 г')).toBe(true)
   })
 })

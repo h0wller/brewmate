@@ -1,4 +1,5 @@
 import { buildPackagePrompt } from './prompt'
+import type { PromptOptions } from './prompt'
 export { buildPackagePrompt }
 
 export interface AIConfig {
@@ -109,14 +110,16 @@ export function parseProxyResponse(status: number, body: unknown): unknown {
 }
 
 /* Распознать пачку: со своим ключом — напрямую, иначе через бесплатный сервер BrewMate */
-export async function recognizePackage(cfg: AIConfig | null, methodLabel: string, image: string): Promise<any> {
-  if (cfg?.apiKey && cfg.baseUrl) return askVision(cfg, image, buildPackagePrompt(methodLabel))
+export async function recognizePackage(
+  cfg: AIConfig | null, methodLabel: string, image: string, opts: PromptOptions = {},
+): Promise<any> {
+  if (cfg?.apiKey && cfg.baseUrl) return askVision(cfg, image, buildPackagePrompt(methodLabel, opts))
   let res: Response
   try {
     res = await fetch('/api/vision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: 'package', methodLabel, image }),
+      body: JSON.stringify({ task: 'package', methodLabel, image, ...opts }),
     })
   } catch {
     throw new AIError('network', 'Нет связи с сервером. Проверь интернет и попробуй ещё раз.')
