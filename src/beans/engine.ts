@@ -184,18 +184,3 @@ export function recipeFromBean(
     createdAt: Date.now(),
   }
 }
-
-/* Масштабирует кумулятивный вес воды (pourTo) во всех шагах пропорционально новому объёму */
-export function scaleStepsWater(steps: BrewStep[], oldWater: number, newWater: number): BrewStep[] {
-  if (!steps.length || newWater <= 0) return steps
-  const base = oldWater > 0 ? oldWater : (steps.at(-1)?.pourTo || 1)
-  if (base <= 0) return steps
-  const k = newWater / base
-  return steps.map((s, i) => ({
-    ...s,
-    /* последний шаг фиксируем ровно на newWater без погрешности округления */
-    pourTo: i === steps.length - 1 && Math.abs(s.pourTo - base) <= 2
-      ? Math.round(newWater)
-      : Math.max(1, Math.round(s.pourTo * k)),
-  }))
-}
