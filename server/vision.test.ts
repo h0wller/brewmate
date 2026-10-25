@@ -109,7 +109,7 @@ describe('runVision: перебор провайдеров', () => {
     { id: 'gemini', baseUrl: 'https://gem.test', model: 'm', key: 'k1' },
     { id: 'groq', baseUrl: 'https://groq.test', model: 'm', key: 'k2' },
   ]
-  const req = { methodLabel: 'V60', image: IMG }
+  const req = { task: 'package' as const, methodLabel: 'V60', image: IMG }
   const T = 1_700_000_000_000
 
   it('достаёт JSON даже из ответа в markdown', async () => {
