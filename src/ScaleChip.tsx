@@ -17,6 +17,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void 
   const [debug, setDebug] = useState(false)
   const [log, setLog] = useState<string[]>([])
   const [cmdHex, setCmdHex] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const handle = useRef<ScaleHandle | null>(null)
   const handshakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cbRef = useRef(onWeight)
@@ -49,7 +50,11 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void 
   }
 
   const connect = async () => {
-    if (!btSupported()) { alert('Web Bluetooth недоступен (iOS).'); return }
+    setError(null)
+    if (!btSupported()) {
+      setError('Web Bluetooth недоступен в этом браузере/окружении.')
+      return
+    }
     let drv: ScaleDriver = DRIVERS[0]
     try {
       const h = await connectScale(
@@ -66,10 +71,13 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void 
       setName(h.name)
       setOn(true)
       setOffset(0)
-    } catch (e) { alert((e as Error).message) }
+    } catch (e) {
+      setError((e as Error).message)
+    }
   }
 
   const disconnect = () => {
+    setError(null)
     if (handshakeTimer.current) clearTimeout(handshakeTimer.current)
     handle.current?.disconnect(); handle.current = null
     setOn(false); setRawG(null); setOffset(0); setLog([])
@@ -110,6 +118,7 @@ export function ScaleChip({ onWeight }: { onWeight?: (g: number | null) => void 
           </>
         )}
       </div>
+      {error && <div className="small" style={{ color: '#ff6961', margin: '4px 0' }}>{error}</div>}
       {on && net !== null && (
         <div className="scaleWeight">
           <span className="val">{net.toFixed(1)}</span>

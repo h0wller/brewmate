@@ -78,11 +78,11 @@ input {
   background: #2c2c31; border: 0; border-radius: 10px;
   color: #fff; padding: 10px 12px; font-size: 16px; width: 100%;
 }
-input.num { width: 70px; text-align: center; }
+input.num { width: 82px; text-align: center; padding: 10px 6px; }
 
 .stepRow { display: flex; gap: 6px; margin-bottom: 6px; }
 .stepRow input { padding: 9px 8px; font-size: 14px; }
-.stepRow .dur, .stepRow .pour { width: 64px; flex: none; text-align: center; }
+.stepRow .dur, .stepRow .pour { width: 74px; flex: none; text-align: center; }
 .stepRow .note { flex: 1; }
 .x { border: 0; background: none; color: #8e8e93; font-size: 18px; cursor: pointer; }
 

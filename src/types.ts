@@ -15,6 +15,7 @@ export interface Grind {
 export interface GrinderProfile {
   grinder?: { id: string; label?: string }
   calibration: Partial<Record<GrindSize, string>>
+  redClix?: boolean
 }
 
 export interface Recipe {

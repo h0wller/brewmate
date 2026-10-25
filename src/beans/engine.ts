@@ -5,9 +5,16 @@ import type { GrindSize } from '../grinders/size'
 
 export type RoastLevel = 'light' | 'medium' | 'dark'
 export type MethodKey = 'v60' | 'drip' | 'french' | 'aero' | 'cupping'
+export type WaterKey = 'balanced' | 'soft' | 'hard'
 
 export const LEVEL_LABEL: Record<RoastLevel, string> = {
   light: 'светлая', medium: 'средняя', dark: 'тёмная',
+}
+
+export const WATER_PROFILES: Record<WaterKey, { label: string; sub: string }> = {
+  soft:     { label: '💧 Мягкая', sub: 'TDS < 60 мг/л (Пилигрим, Святой Источник, осмос)' },
+  balanced: { label: '⚖️ Баланс (SCA)', sub: 'TDS 70–120 мг/л (фильтр / бутилированная)' },
+  hard:     { label: '🪨 Жёсткая', sub: 'TDS > 150 мг/л (водопровод / минеральная)' },
 }
 
 /* Базовые настройки под среднюю обжарку. Помол — уровень общей шкалы крупности,
@@ -71,10 +78,16 @@ export interface Recommendation {
   temp: number; ratio: number; bloom: number; tips: string[]
 }
 
-export function recommend(bean: BeanProfile, method: MethodKey): Recommendation {
+export function recommend(
+  bean: BeanProfile,
+  method: MethodKey,
+  water: WaterKey = 'balanced',
+  dose = 15,
+): Recommendation {
   const m = METHODS[method]
   let coarse = GRIND_SIZES.indexOf(m.size)   // в долях уровня шкалы
   let temp = m.temp
+  let ratio = m.ratio
   let bloom = m.bloom
   const tips: string[] = []
 
@@ -103,7 +116,21 @@ export function recommend(bean: BeanProfile, method: MethodKey): Recommendation 
     tips.push('Натуральная обработка — слаще и растворимее: чуть крупнее помол.')
   }
   if (bean.process === 'anaerobic') {
-    tips.push('Анаэробная ферментация — яркая чашка: начни с базового помола и слушай вкус.')
+    coarse += 0.4; temp -= 2
+    tips.push('Анаэробная ферментация — легко отдаёт вкус: помол крупнее и вода прохладнее.')
+  }
+
+  if (water === 'soft') {
+    coarse -= 0.2; temp += 1; ratio = Math.max(12, ratio - 0.5)
+    tips.push('Мягкая вода подчёркивает кислотность — чуть плотнее пропорция и тоньше помол для сладости.')
+  } else if (water === 'hard') {
+    coarse += 0.25; temp -= 2
+    tips.push('Жёсткая вода гасит кислотность и усиливает горечь — вода прохладнее (−2°C) и помол чуть крупнее.')
+  }
+
+  if (dose >= 40) {
+    coarse += 0.35
+    tips.push(`Большая порция (${dose} г) — слой кофе толще: помол чуть крупнее для равномерного пролива.`)
   }
 
   const { size, nudge } = describeCoarseness(coarse)
@@ -112,14 +139,19 @@ export function recommend(bean: BeanProfile, method: MethodKey): Recommendation 
     size,
     nudge,
     temp: Math.max(85, Math.min(98, temp)),
-    ratio: m.ratio,
+    ratio,
     bloom,
     tips,
   }
 }
 
-export function recipeFromBean(bean: BeanProfile, method: MethodKey, rec: Recommendation, grind: Grind): Recipe {
-  const dose = 15
+export function recipeFromBean(
+  bean: BeanProfile,
+  method: MethodKey,
+  rec: Recommendation,
+  grind: Grind,
+  dose = 15,
+): Recipe {
   const water = Math.round(dose * rec.ratio)
   let steps: BrewStep[]
   if (method === 'french') steps = [
@@ -127,12 +159,16 @@ export function recipeFromBean(bean: BeanProfile, method: MethodKey, rec: Recomm
     { duration: 240, pourTo: water, note: 'настоять 4 мин, снять корку' },
     { duration: 30, pourTo: water, note: 'продавить' },
   ]
+  else if (method === 'cupping') steps = [
+    { duration: 240, pourTo: water, note: 'залить и настоять 4 мин' },
+    { duration: 60, pourTo: water, note: 'сломать корку, снять пену' },
+  ]
   else if (method === 'aero') steps = [
     { duration: 30, pourTo: water, note: 'залить и перемешать' },
     { duration: 90, pourTo: water, note: 'продавить' },
   ]
   else steps = [
-    { duration: rec.bloom, pourTo: dose * 3, note: 'блюм' },
+    { duration: rec.bloom, pourTo: Math.round(dose * 3), note: 'блюм' },
     { duration: 30, pourTo: Math.round(water * 0.6), note: 'первое вливание' },
     { duration: 30, pourTo: water, note: 'второе вливание' },
   ]
