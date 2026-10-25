@@ -8,6 +8,7 @@ import { settingFor } from './grinders/profile'
 import { fromDose, fromWater, ratioOf } from './recipeScale'
 import type { Base } from './recipeScale'
 import { GrinderConverter } from './GrinderConverter'
+import { NumField } from './NumField'
 
 export function RecipeEditor({
   initial,
@@ -113,25 +114,27 @@ export function RecipeEditor({
         />
       </div>
 
-      <div className="row" style={{ flexWrap: 'wrap' }}>
-        <label>Кофе, г</label>
-        <input className="num" type="number" min={1} step="any" value={r.doseG || ''}
-          onChange={(e) => setDose(+e.target.value)} />
-        <label>Вода, г</label>
-        <input className="num" type="number" min={1} step="any" value={r.waterG || ''}
-          onChange={(e) => setWater(+e.target.value)} />
-        <label>t°, C</label>
-        <input className="num" type="number" min={50} max={100} value={r.tempC || ''}
-          onChange={(e) => set({ tempC: +e.target.value })} />
+      <div className="numGrid">
+        <label>
+          <span>Кофе, г</span>
+          <NumField value={r.doseG} decimal onValue={n => setDose(n ?? 0)} label="Кофе, г" />
+        </label>
+        <label>
+          <span>Вода, г</span>
+          <NumField value={r.waterG} decimal onValue={n => setWater(n ?? 0)} label="Вода, г" />
+        </label>
+        <label>
+          <span>t°, C</span>
+          <NumField value={r.tempC} onValue={n => set({ tempC: n ?? 0 })} label="Температура, °C" />
+        </label>
       </div>
 
       <div className="row">
         <label>Пропорция 1:</label>
-        <input className="num" type="number" step="0.1"
-          value={ratio === undefined ? '' : Math.round(ratio * 10) / 10}
-          onChange={(e) => setRatio(+e.target.value)} />
+        <NumField value={ratio === undefined ? undefined : Math.round(ratio * 10) / 10} decimal
+          onValue={n => setRatio(n ?? 0)} label="Пропорция воды к кофе" />
         <button className={'chip' + (locked ? ' on' : '')} onClick={toggleLock}>
-          {locked ? '🔗 вода и кофе связаны' : '🔓 независимо'}
+          {locked ? '🔗 связаны' : '🔓 независимо'}
         </button>
       </div>
 
@@ -187,10 +190,10 @@ export function RecipeEditor({
 
       {r.steps.map((s, i) => (
         <div className="stepRow" key={i}>
-          <input className="dur" type="number" value={s.duration}
-            onChange={(e) => setStep(i, { duration: +e.target.value })} />
-          <input className="pour" type="number" value={s.pourTo}
-            onChange={(e) => setStep(i, { pourTo: +e.target.value })} />
+          <NumField className="dur" value={s.duration} label={`Шаг ${i + 1}: секунды`}
+            onValue={n => setStep(i, { duration: n ?? 0 })} />
+          <NumField className="pour" value={s.pourTo} decimal label={`Шаг ${i + 1}: вес, г`}
+            onValue={n => setStep(i, { pourTo: n ?? 0 })} />
           <input className="note" value={s.note ?? ''}
             onChange={(e) => setStep(i, { note: e.target.value })} />
           <button className="x"
