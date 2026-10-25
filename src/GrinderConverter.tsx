@@ -91,7 +91,7 @@ export function GrinderConverter({
               value={searchFrom}
               onChange={e => setSearchFrom(e.target.value)}
               placeholder="Поиск исходной кофемолки…"
-              style={{ marginBottom: 6, fontSize: 14, padding: '6px 8px' }}
+              style={{ marginBottom: 6, padding: '8px 10px' }}
             />
             <div className="lotChips" style={{ flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto' }}>
               {filteredFrom.map(g => (
@@ -161,7 +161,7 @@ export function GrinderConverter({
               value={searchTo}
               onChange={e => setSearchTo(e.target.value)}
               placeholder="Поиск целевой кофемолки…"
-              style={{ marginBottom: 6, fontSize: 14, padding: '6px 8px' }}
+              style={{ marginBottom: 6, padding: '8px 10px' }}
             />
             <div className="lotChips" style={{ flexWrap: 'wrap', maxHeight: 120, overflowY: 'auto' }}>
               {filteredTo.map(g => (

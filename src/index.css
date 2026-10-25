@@ -11,8 +11,15 @@ html, body {
 #root {
   max-width: 560px;
   margin: 0 auto;
-  padding: 12px 14px calc(20px + env(safe-area-inset-bottom));
+  /* PWA с прозрачным статус-баром рисуется под часами и чёлкой: отступаем на безопасную область */
+  padding:
+    calc(12px + env(safe-area-inset-top))
+    calc(14px + env(safe-area-inset-right))
+    calc(20px + env(safe-area-inset-bottom))
+    calc(14px + env(safe-area-inset-left));
 }
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: hidden; }
 
 h1 { font-size: 26px; margin: 8px 0 14px; }
 
@@ -78,10 +85,11 @@ input {
   background: #2c2c31; border: 0; border-radius: 10px;
   color: #fff; padding: 10px 12px; font-size: 16px; width: 100%;
 }
-input.num { width: 82px; text-align: center; padding: 10px 6px; }
+input.num { width: 82px; text-align: center; padding: 10px 6px; font-variant-numeric: tabular-nums; }
+input, textarea, select { font-size: 16px; }
 
 .stepRow { display: flex; gap: 6px; margin-bottom: 6px; }
-.stepRow input { padding: 9px 8px; font-size: 14px; }
+.stepRow input { padding: 9px 8px; } /* не меньше 16px: иначе iOS зумит страницу при фокусе */
 .stepRow .dur, .stepRow .pour { width: 74px; flex: none; text-align: center; }
 .stepRow .note { flex: 1; }
 .x { border: 0; background: none; color: #8e8e93; font-size: 18px; cursor: pointer; }
@@ -134,14 +142,25 @@ input.num { width: 82px; text-align: center; padding: 10px 6px; }
 
 textarea {
   width: 100%; background: #242428; border: 0; border-radius: 12px;
-  color: #fff; padding: 12px; font-size: 15px; min-height: 80px;
+  color: #fff; padding: 12px; font-size: 16px; min-height: 80px;
   font-family: inherit; margin-bottom: 8px;
 }
 /* ---------- Зерно ---------- */
 .swatch { width: 28px; height: 28px; border-radius: 8px; border: 1px solid #3a3a3f; }
 .swatchLabel { color: #98989f; font-size: 14px; }
-.recBig { display: flex; justify-content: space-around; text-align: center; margin: 6px 0 10px; }
-.recVal { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.recBig {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px; text-align: center; margin: 6px 0 10px; align-items: start;
+}
+.recBig > div { min-width: 0; }
+.recVal { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.recVal .u { font-size: 14px; font-weight: 600; color: #98989f; }
+
+.doseRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.doseOwn { display: inline-flex; align-items: center; gap: 6px; }
+.doseOwn input { width: 84px; text-align: center; padding: 8px 6px; border-radius: 999px; }
+.doseOwn .unit { color: #98989f; font-size: 14px; }
+.aiResult { border: 1px solid #0a3d91; }
 .tip { color: #98989f; font-size: 13px; margin: 4px 0; }
 
 .btn:disabled { opacity: .4; }
@@ -189,4 +208,10 @@ textarea {
 .steps.stats .w { width: auto; min-width: 64px; text-align: right; white-space: nowrap; }
 
 /* ---------- Кофемолки ---------- */
-.recVal.sm { font-size: 18px; line-height: 1.3; padding-top: 4px; }
+.recVal.sm { font-size: 18px; line-height: 1.3; padding-top: 4px; white-space: normal; overflow-wrap: anywhere; }
+
+/* ---------- Редактор рецепта: кофе / вода / температура ---------- */
+.numGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.numGrid label { display: flex; flex-direction: column; gap: 4px; color: #98989f; font-size: 13px; }
+.numGrid input.num { width: 100%; }
+.row input.num { width: 82px; }
