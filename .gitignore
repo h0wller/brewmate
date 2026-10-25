@@ -27,3 +27,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Артефакты Google AI Studio (не часть проекта)
+.aistudio/
+/metadata.json
