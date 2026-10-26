@@ -76,6 +76,12 @@ describe('makeTrialRecipe', () => {
 
 
 describe('assessTrialOutcome', () => {
+  it('renders sensory enums using Russian labels', () => {
+    const source = log({ taste: 'sour', rating: 3 })
+    const trial = log({ id: 'trial-ru', taste: 'balanced', rating: 4 })
+    expect(assessTrialOutcome(source, trial).evidence).toContain('Вкус: Кисло → Баланс')
+  })
+
   it('marks a higher-rated balanced cup as promising but asks for replication', () => {
     const source = log({ taste: 'sour', rating: 3, finalG: 310 })
     const trial = log({ id: 'trial-1', trial: { sourceLogId: source.id, variable: 'grind', baselineTaste: 'sour' }, taste: 'balanced', rating: 4, durationS: 225, finalG: 300 })
@@ -297,6 +303,13 @@ describe('assessTrialRepeatability', () => {
     const result = assessTrialRepeatability(source, [wrongSource, wrongBean, wrongMethod])
     expect(result.status).toBe('insufficient')
     expect(result.trials).toBe(0)
+  })
+
+  it('requires both a taste label and a valid 1–5 rating for every counted trial', () => {
+    const noTaste = trial('no-taste', 4, undefined)
+    const noRating = trial('no-rating', undefined, 'balanced')
+    const invalidRating = trial('invalid-rating', 6, 'balanced')
+    expect(assessTrialRepeatability(source, [noTaste, noRating, invalidRating]).trials).toBe(0)
   })
 
   it('does not count records without sensory notes or ratings', () => {
