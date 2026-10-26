@@ -66,6 +66,16 @@ describe('экспорт', () => {
     expect(r.finish_s).toBe(150)
     expect(r.lang).toBe('ru')
   })
+  it('moccamaster экспортируется как drip с каноническим brewer и импортируется обратно', () => {
+    const source: Recipe = { ...mine, method: 'moccamaster' }
+    const doc = JSON.parse(toCoffeeJSON([source]))
+    expect(doc.recipes[0].method).toBe('drip')
+    expect(doc.recipes[0].brewer).toEqual({ id: 'technivorm-moccamaster' })
+    const imported = parseCoffeeJSON(JSON.stringify(doc)).recipes[0]
+    expect(imported.method).toBe('moccamaster')
+    expect(imported.doseG).toBe(source.doseG)
+    expect(imported.waterG).toBe(source.waterG)
+  })
   it('документ: версия, генератор, рецепты', () => {
     const doc = JSON.parse(toCoffeeJSON([mine]))
     expect(doc.coffeejson).toBe('1.0')
