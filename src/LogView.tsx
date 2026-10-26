@@ -6,7 +6,7 @@ import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
-import { diagnoseNextCup, makeTrialRecipe } from './beans/dialIn'
+import { assessTrialOutcome, diagnoseNextCup, makeTrialRecipe } from './beans/dialIn'
 
 export function LogView({ log, sourceLog, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
   log: BrewLog
@@ -24,6 +24,7 @@ export function LogView({ log, sourceLog, beans, canRepeat, check, onChange, onB
   const set = (p: Partial<BrewLog>) => onChange({ ...log, ...p })
   const dialIn = diagnoseNextCup(log)
   const trial = makeTrialRecipe(log)
+  const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
 
   const pickBean = (id: string) => {
     const b = beans.find(x => x.id === id)
@@ -90,12 +91,16 @@ export function LogView({ log, sourceLog, beans, canRepeat, check, onChange, onB
               {' → '}
               Сейчас: {log.taste ? TASTE_LABEL[log.taste] : 'отметь вкус ниже'}
               {log.rating !== undefined ? ` · оценка ${log.rating}/5` : ''}
-              {sourceLog.rating !== undefined && log.rating !== undefined && (
-                <div><b>Изменение оценки: {log.rating - sourceLog.rating > 0 ? '+' : ''}{log.rating - sourceLog.rating}/5.</b></div>
-              )}
             </div>
           )}
-          <div className="small">Чтобы результат был полезен, сравнивай вкус и оценку, меняя за одну пробу только один параметр.</div>
+          {trialAssessment && (
+            <div style={{ marginTop: 8 }}>
+              <b>{trialAssessment.verdict === 'promising' ? 'Положительный сигнал' : trialAssessment.verdict === 'worse' ? 'Возможное ухудшение' : trialAssessment.verdict === 'mixed' ? 'Нет заметного изменения' : 'Пока недостаточно данных'}</b>
+              <div>{trialAssessment.summary}</div>
+              {trialAssessment.evidence.map((item, i) => <div className="small" key={i}>• {item}</div>)}
+            </div>
+          )}
+          <div className="small">Время и выход фиксируются как контекст, а не как оценка вкуса. Повтори удачную пробу, прежде чем считать настройку устойчивой.</div>
         </div>
       )}
 
