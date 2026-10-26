@@ -6,6 +6,7 @@ import {
 } from './ai/visionBenchStore'
 import type { VisionBenchPhoto, VisionBenchRecord } from './ai/visionBenchStore'
 import './VisionBench.css'
+import { VisionBenchRunner } from './VisionBenchRunner'
 
 type Draft = Omit<VisionBenchRecord, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -325,6 +326,7 @@ export function VisionBench() {
               {record.photos.map(photo => <PhotoThumb key={photo.id} photo={photo} />)}
             </div>
             {record.notes && <p className="benchNotes">{record.notes}</p>}
+            <VisionBenchRunner record={record} onComplete={refresh} />
             <div className="benchRecordActions">
               <button type="button" className="chip" onClick={() => editRecord(record)}>Редактировать</button>
               <button type="button" className="chip fault" onClick={() => void removeRecord(record)}>Удалить</button>
