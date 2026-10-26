@@ -87,13 +87,11 @@ export async function deleteVisionBenchRecord(id: string): Promise<void> {
   }
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('Не удалось прочитать фотографию для экспорта.'))
-    reader.readAsDataURL(blob)
-  })
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return `data:${blob.type || 'application/octet-stream'};base64,${btoa(binary)}`
 }
 
 function dataUrlToBlob(value: unknown): Blob {
