@@ -270,6 +270,17 @@ export class ProviderError extends Error {
   }
 }
 
+/* Retry-After допускает как число секунд, так и HTTP-date. */
+export function retryAfterSeconds(value: string | null, now = Date.now()): number | undefined {
+  if (!value) return undefined
+  const seconds = Number(value)
+  if (Number.isFinite(seconds) && seconds > 0) return seconds
+  const date = Date.parse(value)
+  if (!Number.isFinite(date)) return undefined
+  const remaining = Math.ceil((date - now) / 1000)
+  return remaining > 0 ? remaining : undefined
+}
+
 export function extractJson(text: string): unknown {
   const m = text.match(/\{[\s\S]*\}/)
   if (!m) throw new ProviderError(502, 'модель не вернула JSON')
@@ -346,7 +357,7 @@ export function normalizeVisionResult(task: VisionRequest['task'], value: unknow
 }
 
 async function callProvider(
-  fetchFn: typeof fetch, p: Provider, req: VisionRequest, timeoutMs: number,
+  fetchFn: typeof fetch, p: Provider, req: VisionRequest, timeoutMs: number, now: number,
 ): Promise<unknown> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), timeoutMs)
@@ -368,8 +379,8 @@ async function callProvider(
       }),
     })
     if (!res.ok) {
-      const ra = Number(res.headers.get('retry-after'))
-      throw new ProviderError(res.status, (await res.text()).slice(0, 200), Number.isFinite(ra) && ra > 0 ? ra : undefined)
+      const ra = retryAfterSeconds(res.headers.get('retry-after'), now)
+      throw new ProviderError(res.status, (await res.text()).slice(0, 200), ra)
     }
     const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
     const text = data.choices?.[0]?.message?.content
@@ -432,7 +443,7 @@ export async function runVision(
   const ordered = [...free.filter(p => p.id === health.lastGood), ...free.filter(p => p.id !== health.lastGood)]
   for (const p of ordered) {
     try {
-      const result = await callProvider(fetchFn, p, req, timeoutMs)
+      const result = await callProvider(fetchFn, p, req, timeoutMs, now)
       health.lastGood = p.id
       if (sharedState) {
         try { await sharedState.set(LAST_GOOD_KEY, p.id, 86_400) }
