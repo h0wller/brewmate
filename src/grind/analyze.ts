@@ -1,19 +1,24 @@
-/* Измерение помола по фото: многоступенчатая фильтрация (локальный адаптивный порог,
-   маска белого листа, фильтр формы/комков и привязка к ожидаемому размеру от настройки кофемолки). */
+/* Измерение помола по фото:
+   1. Локализация области листа бумаги (ROI) с отсечением фона/стола за краями листа.
+   2. Локальная адаптивная бинаризация (Integral Image) для устойчивости к градиентам освещения.
+   3. Гранулометрический фильтр формы по стандарту ISO 9276-6 (Circularity 4πA/P²) для разделения одиночных зёрен и агломератов.
+   4. Поправка на проекцию (Sieve-equivalent diameter): учёт малой оси частицы для сходимости с ситовым анализом (600/900/1400 мкм). */
 
 export interface Img { data: ArrayLike<number>; width: number; height: number } // RGBA, как ImageData
 
 export interface Particle {
   area: number            // px²
+  perimeter: number       // px (длина границы)
+  circularity: number     // 4π·area / perimeter² (0..1, у круга = 1, у комков < 0.42)
   cx: number; cy: number  // центр, px
   w: number; h: number    // габариты, px
 }
 
 export interface Segmentation {
-  particles: Particle[]   // без краевых, комков, теней и отмеченных монет
-  clumps: Particle[]      // отброшенные слипшиеся комки / горки кофе (рисуем отдельно)
+  particles: Particle[]   // верифицированные одиночные крупинки
+  clumps: Particle[]      // отсечённые агломераты (комки и куча)
   threshold: number
-  coverage: number        // доля тёмных пикселей кадра
+  coverage: number        // доля тёмных пикселей внутри листа
   dropped: { border: number; tiny: number; excluded: number; clumps: number; shape: number }
 }
 
@@ -21,17 +26,15 @@ export type QualityFlag = 'few_particles' | 'too_dense' | 'low_resolution' | 'cl
 
 export interface GrindStats {
   n: number
-  d10: number; d50: number; d90: number   // мкм, по объёму (d³) с защитой от выбросов
+  d10: number; d50: number; d90: number   // мкм, по объёму (d³)
   d50n: number                            // мкм, по числу частиц
-  span: number                            // (d90 − d10) / d50: чем меньше, тем равномернее
-  limitUm: number                         // мельче этого размера частицы на снимке не видны
+  span: number                            // (d90 − d10) / d50
+  limitUm: number                         // предел разрешения камеры, мкм
   coverage: number
   flags: QualityFlag[]
 }
 
 export interface Circle { cx: number; cy: number; r: number }
-
-/* ---------- масштаб ---------- */
 
 export const COINS = [
   { id: 'rub1', label: '1 ₽', mm: 20.5 },
@@ -43,7 +46,6 @@ export const COINS = [
   { id: 'usd25', label: '25 ¢ (США)', mm: 24.26 },
 ] as const
 
-/* Пикселей на миллиметр по двум точкам на противоположных краях монеты */
 export function scaleFromPoints(
   a: { x: number; y: number }, b: { x: number; y: number }, diameterMm: number,
 ): number | null {
@@ -51,58 +53,46 @@ export function scaleFromPoints(
   return px > 0 && diameterMm > 0 ? px / diameterMm : null
 }
 
-/* Автопоиск монеты в верхней/центральной части кадра (ищет круговой градиент металлического диска) */
 export function detectCoinCircle(img: Img): Circle {
   const { width: W, height: H } = img
   const gray = toGray(img)
   const rDefault = Math.round(Math.min(W, H) * 0.16)
   let bestX = Math.round(W * 0.5)
-  let bestY = Math.round(H * 0.25)
+  let bestY = Math.round(H * 0.22)
   let bestR = rDefault
   let bestScore = -1
 
   const step = Math.max(4, Math.round(Math.min(W, H) / 60))
   const rMin = Math.round(Math.min(W, H) * 0.10)
-  const rMax = Math.round(Math.min(W, H) * 0.26)
+  const rMax = Math.round(Math.min(W, H) * 0.28)
   const rStep = Math.max(4, Math.round((rMax - rMin) / 6))
 
   for (let r = rMin; r <= rMax; r += rStep) {
-    for (let y = r + step; y <= H - r - step; y += step * 2) {
+    for (let y = Math.round(r * 0.8); y <= H - r - step; y += step * 2) {
       for (let x = r + step; x <= W - r - step; x += step * 2) {
-        let edgeSum = 0
-        let inSum = 0
-        let outSum = 0
+        let edgeSum = 0, inSum = 0, outSum = 0
         const dirs = 16
         for (let k = 0; k < dirs; k++) {
           const ang = (k * 2 * Math.PI) / dirs
           const cos = Math.cos(ang), sin = Math.sin(ang)
-          const xi = Math.round(x + cos * (r * 0.82))
-          const yi = Math.round(y + sin * (r * 0.82))
-          const xo = Math.round(x + cos * (r * 1.15))
-          const yo = Math.round(y + sin * (r * 1.15))
-          const gi = gray[yi * W + xi]
-          const go = gray[yo * W + xo]
-          inSum += gi
-          outSum += go
+          const xi = Math.max(0, Math.min(W - 1, Math.round(x + cos * (r * 0.82))))
+          const yi = Math.max(0, Math.min(H - 1, Math.round(y + sin * (r * 0.82))))
+          const xo = Math.max(0, Math.min(W - 1, Math.round(x + cos * (r * 1.15))))
+          const yo = Math.max(0, Math.min(H - 1, Math.round(y + sin * (r * 1.15))))
+          const gi = gray[yi * W + xi], go = gray[yo * W + xo]
+          inSum += gi; outSum += go
           if (go - gi > 12) edgeSum += (go - gi)
         }
-        // Монета на белой бумаге: снаружи светлая бумага (outSum/dirs > 150), внутри темнее
-        const meanOut = outSum / dirs
-        const meanIn = inSum / dirs
+        const meanOut = outSum / dirs, meanIn = inSum / dirs
         if (meanOut > 140 && meanOut - meanIn > 18 && meanIn > 45) {
-          const score = edgeSum - Math.abs(y - H * 0.28) * 0.08
-          if (score > bestScore) {
-            bestScore = score
-            bestX = x; bestY = y; bestR = r
-          }
+          const score = edgeSum - Math.abs(y - H * 0.22) * 0.08
+          if (score > bestScore) { bestScore = score; bestX = x; bestY = y; bestR = r }
         }
       }
     }
   }
   return { cx: bestX, cy: bestY, r: bestR }
 }
-
-/* ---------- сегментация ---------- */
 
 export function toGray(img: Img): Uint8Array {
   const { data, width, height } = img
@@ -113,7 +103,6 @@ export function toGray(img: Img): Uint8Array {
   return g
 }
 
-/* Порог Оцу: максимизирует разницу между классами «тёмное» и «светлое» */
 export function otsu(gray: Uint8Array): number {
   const hist = new Array<number>(256).fill(0)
   for (let i = 0; i < gray.length; i++) hist[gray[i]]++
@@ -134,14 +123,11 @@ export function otsu(gray: Uint8Array): number {
   return thr
 }
 
-/* Интегральное изображение для мгновенного расчёта локального фона (убирает тени от телефона) */
 function buildIntegral(gray: Uint8Array, W: number, H: number): Int32Array {
   const sat = new Int32Array((W + 1) * (H + 1))
   for (let y = 1; y <= H; y++) {
     let rowSum = 0
-    const srcOff = (y - 1) * W
-    const dstOff = y * (W + 1)
-    const prevOff = (y - 1) * (W + 1)
+    const srcOff = (y - 1) * W, dstOff = y * (W + 1), prevOff = (y - 1) * (W + 1)
     for (let x = 1; x <= W; x++) {
       rowSum += gray[srcOff + x - 1]
       sat[dstOff + x] = sat[prevOff + x] + rowSum
@@ -153,43 +139,11 @@ function buildIntegral(gray: Uint8Array, W: number, H: number): Int32Array {
 function boxMean(sat: Int32Array, W: number, H: number, x: number, y: number, r: number): number {
   const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r)
   const x1 = Math.min(W, x + r + 1), y1 = Math.min(H, y + r + 1)
-  const count = (x1 - x0) * (y1 - y0)
   const stride = W + 1
   const sum = sat[y1 * stride + x1] - sat[y0 * stride + x1] - sat[y1 * stride + x0] + sat[y0 * stride + x0]
-  return sum / count
+  return sum / ((x1 - x0) * (y1 - y0))
 }
 
-export interface SegmentOptions {
-  exclude?: Circle[]    // монета и прочее, что не частицы
-  minArea?: number      // px², меньше — шум
-  maxArea?: number      // px², больше — слипшийся комок или куча кофе
-  threshold?: number    // вручную; иначе Оцу + локальный адаптивный фильтр
-}
-
-/* ---------- статистика ---------- */
-
-const quantile = (sortedD: number[], cumW: number[], q: number): number => {
-  const target = cumW[cumW.length - 1] * q
-  let lo = 0, hi = cumW.length - 1
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if (cumW[mid] >= target) hi = mid; else lo = mid + 1
-  }
-  return sortedD[lo]
-}
-
-/* Диаметр круга той же площади, мкм */
-export const equivDiameterUm = (areaPx: number, pxPerMm: number): number =>
-  (2 * Math.sqrt(areaPx / Math.PI) / pxPerMm) * 1000
-
-export const MIN_PARTICLES = 150
-
-export interface SummarizeOptions {
-  /** Ожидаемый размер помола (мкм) исходя из текущей настройки кофемолки или выбранного метода.
-      Позволяет жёстко отфильтровать слипшиеся комки, которые физически не могут быть одной частицей. */
-  expectedUm?: number
-}
-/* Находит границы белого листа бумаги по профилям яркости, полностью отсекая стол */
 function findPaperROI(gray: Uint8Array, W: number, H: number): { xMin: number; xMax: number; yMin: number; yMax: number } {
   const colBright = new Uint8Array(W)
   const stepY = Math.max(1, Math.floor(H / 64))
@@ -218,6 +172,13 @@ function findPaperROI(gray: Uint8Array, W: number, H: number): { xMin: number; x
     return { xMin: xMin + padX, xMax: xMax - padX, yMin: padY, yMax: H - 1 - padY }
   }
   return { xMin: padX, xMax: W - 1 - padX, yMin: padY, yMax: H - 1 - padY }
+}
+
+export interface SegmentOptions {
+  exclude?: Circle[]
+  minArea?: number
+  maxArea?: number
+  threshold?: number
 }
 
 export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
@@ -341,10 +302,19 @@ export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
   return { particles, clumps, threshold: globalThr, coverage: dark / denom, dropped }
 }
 
+const quantile = (sortedD: number[], cumW: number[], q: number): number => {
+  const target = cumW[cumW.length - 1] * q
+  let lo = 0, hi = cumW.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (cumW[mid] >= target) hi = mid; else lo = mid + 1
+  }
+  return sortedD[lo]
+}
+
 export const equivDiameterUm = (areaPx: number, pxPerMm: number): number =>
   (2 * Math.sqrt(areaPx / Math.PI) / pxPerMm) * 1000
 
-/* Ситовой эквивалентный диаметр для точного совпадения с лабораторными ситами 600/900/1400 мкм */
 export function sieveDiameterUm(p: Particle, pxPerMm: number, projectionFactor = 0.85): number {
   const eq = equivDiameterUm(p.area, pxPerMm)
   const elongation = Math.min(p.w, p.h) / Math.max(1, Math.max(p.w, p.h))
@@ -375,8 +345,8 @@ export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOpt
     const valid = allDs.filter(d => d >= minSingleParticleUm && d <= maxSingleParticleUm)
     if (valid.length < allDs.length * 0.85) filteredClumps = true
     const pool = valid.length >= 12 ? valid : allDs
-    const medianByCount = pool[Math.floor(pool.length / 2)]
-    const iqrCutoff = Math.min(maxSingleParticleUm, Math.max(1150, medianByCount * 2.15))
+    const measureMedian = pool[Math.floor(pool.length / 2)]
+    const iqrCutoff = Math.min(maxSingleParticleUm, Math.max(1150, measureMedian * 2.15))
     ds = pool.length >= 25 ? pool.filter(d => d <= iqrCutoff) : pool
   }
 
