@@ -17,6 +17,7 @@ export interface GrindCheck {
   logId?: string             // запись журнала, к которой относится замер (если выбрана)
   createdAt?: number         // для слияния при синхронизации; у старых замеров = at
   updatedAt?: number
+  source?: 'photo' | 'sieve'
 }
 
 export const GRIND_CHECKS_KEY = 'brewmate.grindchecks.v1'
@@ -45,6 +46,7 @@ export function sanitizeChecks(raw: unknown): GrindCheck[] {
       logId: typeof c.logId === 'string' ? c.logId : undefined,
       createdAt: num(c.createdAt) ? c.createdAt : c.at,
       updatedAt: num(c.updatedAt) ? c.updatedAt : c.at,
+      source: c.source === 'photo' || c.source === 'sieve' ? c.source : undefined,
     })
   }
   return capChecks(out)
