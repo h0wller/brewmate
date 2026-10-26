@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { emptyData, mergeData, sanitizeData } from './merge'
+import { buildPayload, emptyData, mergeData, sanitizeData } from './merge'
+import type { GrindCheck } from '../grind/store'
 import type { Recipe } from '../types'
 
 const recipe = (id: string, updatedAt?: number, title = id): Recipe => ({
@@ -113,5 +114,49 @@ describe('sanitizeData', () => {
     expect(d.deleted).toEqual({})
     expect(d.logs).toEqual([])
     expect(d.recipes).toHaveLength(1)
+  })
+})
+
+describe('замеры помола в слиянии', () => {
+  const chk = (id: string, at: number, extra: Partial<GrindCheck> = {}): GrindCheck => ({
+    id, at, setting: 20, size: 'medium', d10: 400, d50: 600, d90: 900, n: 300, createdAt: at, updatedAt: at, ...extra,
+  })
+  it('замеры с двух устройств объединяются, дубли по id не множатся', () => {
+    const m = mergeData(
+      data({ grindChecks: [chk('a', 1), chk('b', 2)] }),
+      data({ grindChecks: [chk('b', 2), chk('c', 3)] }),
+    )
+    expect(m.grindChecks.map(c => c.id)).toEqual(['a', 'b', 'c'])   // от старых к новым
+  })
+  it('удалённый замер не возвращается с сервера', () => {
+    const m = mergeData(
+      data({ grindChecks: [], deleted: { a: 10 } }),
+      data({ grindChecks: [chk('a', 1)] }),
+    )
+    expect(m.grindChecks).toEqual([])
+  })
+  it('старая копия без замеров читается: пусто, остальное цело', () => {
+    const d = sanitizeData({ recipes: [recipe('a')] })
+    expect(d.grindChecks).toEqual([])
+    expect(d.recipes).toHaveLength(1)
+  })
+  it('замеры из файла проверяются: битые отброшены, createdAt восстанавливается из времени замера', () => {
+    const d = sanitizeData({ grindChecks: [{ ...chk('a', 7), createdAt: undefined, updatedAt: undefined }, { id: 'x' }, 5] })
+    expect(d.grindChecks).toHaveLength(1)
+    expect(d.grindChecks[0].id).toBe('a')
+    expect([d.grindChecks[0].createdAt, d.grindChecks[0].updatedAt]).toEqual([7, 7])
+  })
+})
+
+describe('buildPayload', () => {
+  it('сохраняет поля, которых эта версия не знает', () => {
+    const p = buildPayload({ recipes: [], futureThing: { x: 1 } }, data({ recipes: [recipe('a')] }))
+    expect(p.futureThing).toEqual({ x: 1 })
+    expect((p.recipes as unknown[]).length).toBe(1)
+  })
+  it('слитые данные главнее серверных, мусорный ответ сервера не ломает', () => {
+    expect(buildPayload(null, data({})).deleted).toEqual({})
+    expect(buildPayload([1, 2], data({})).recipes).toEqual([])
+    expect(buildPayload('x', data({ recipes: [recipe('z')] })).recipes).toHaveLength(1)
   })
 })

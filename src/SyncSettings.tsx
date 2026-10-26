@@ -4,10 +4,14 @@ import type { SyncConfig, SyncData } from './sync/sync'
 import { emptyData, mergeData, sanitizeData } from './sync/merge'
 import { CoffeeJSONError, COFFEEJSON_MEDIA_TYPE, parseCoffeeJSON, toCoffeeJSON } from './coffeejson/coffeejson'
 import { downloadText } from './download'
+import type { GrinderProfile } from './types'
+import { backupFileName, makeBackup, profileToRestore } from './backup'
 
-export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder, onOpenAI }: {
+export function SyncSettings({ initial, local, profile, onProfile, onMerged, onClose, onOpenGrinder, onOpenAI }: {
   initial: SyncConfig | null
   local: SyncData
+  profile: GrinderProfile
+  onProfile: (p: GrinderProfile) => void
   onMerged: (d: SyncData) => void
   onClose: () => void
   onOpenGrinder: () => void
@@ -32,11 +36,8 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder,
   }
 
   const exportJson = () => {
-    const exportedAt = new Date().toISOString()
-    downloadText(
-      `brewmate-${exportedAt.slice(0, 10)}.json`,
-      JSON.stringify({ app: 'brewmate', version: 1, exportedAt, ...local }, null, 2),
-    )
+    const b = makeBackup(local, profile)
+    downloadText(backupFileName(b.exportedAt), JSON.stringify(b, null, 2))
     setMsg('✅ Резервная копия скачана')
   }
 
@@ -44,14 +45,19 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder,
   const importJson = async (f: File) => {
     setMsg('')
     try {
-      const incoming = sanitizeData(JSON.parse(await f.text()))
-      if (!incoming.recipes.length && !incoming.sessions.length && !incoming.beans.length && !incoming.logs.length) {
+      const raw: unknown = JSON.parse(await f.text())
+      const incoming = sanitizeData(raw)
+      const restored = profileToRestore(raw, profile)
+      if (!incoming.recipes.length && !incoming.sessions.length && !incoming.beans.length
+        && !incoming.logs.length && !incoming.grindChecks.length && !restored) {
         throw new Error('в файле нет данных BrewMate')
       }
       onMerged(mergeData(local, incoming))
+      if (restored) onProfile(restored)
       setMsg(
         `✅ Импортировано: рецептов ${incoming.recipes.length}, зерна ${incoming.beans.length}, ` +
-        `каппингов ${incoming.sessions.length}, завариваний ${incoming.logs.length} (слито с текущими данными)`,
+        `каппингов ${incoming.sessions.length}, завариваний ${incoming.logs.length}, ` +
+        `замеров помола ${incoming.grindChecks.length}${restored ? ', кофемолка восстановлена' : ''} (слито с текущими данными)`,
       )
     } catch (e) { setMsg('❌ Импорт: ' + (e as Error).message) }
   }
@@ -112,7 +118,7 @@ export function SyncSettings({ initial, local, onMerged, onClose, onOpenGrinder,
         Сохранить настройки
       </button>
 
-      <div className="small">Резервная копия (файл JSON — рецепты, зерно, каппинги, журнал)</div>
+      <div className="small">Резервная копия (файл JSON — рецепты, зерно, каппинги, журнал, замеры помола, «Моя кофемолка»)</div>
       <input ref={fileRef} type="file" accept="application/json,.json" hidden
         onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.currentTarget.value = '' }} />
       <button className="btn secondary" onClick={exportJson}>⬇️ Скачать копию</button>

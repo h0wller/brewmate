@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { BeanProfile, BrewLog, CuppingSession, LogDraft, Recipe } from './types'
 import {
-  loadBeans, loadDeleted, loadLogs, loadRecipes, loadSessions,
-  saveBeans, saveDeleted, saveLogs, saveRecipes, saveSessions, uid,
+  loadBeans, loadChecks, loadDeleted, loadLogs, loadRecipes, loadSessions,
+  saveBeans, saveChecks, saveDeleted, saveLogs, saveRecipes, saveSessions, uid,
 } from './storage'
 import { stamp } from './sync/merge'
+import type { GrindCheck } from './grind/store'
+import { StorageWarning } from './StorageWarning'
 import type { Tombstones } from './sync/merge'
 import { BrewTimer } from './BrewTimer'
 import { RecipeEditor } from './RecipeEditor'
@@ -57,6 +59,10 @@ export default function App() {
   const [logs, setLogs] = useState<BrewLog[]>(loadLogs)
   useEffect(() => saveLogs(logs), [logs])
 
+  /* замеры помола: входят в копию и синхронизацию, как журнал */
+  const [grindChecks, setGrindChecks] = useState<GrindCheck[]>(loadChecks)
+  useEffect(() => saveChecks(grindChecks), [grindChecks])
+
   /* метки удалений: без них синхронизация вернёт удалённое обратно */
   const [deleted, setDeleted] = useState<Tombstones>(loadDeleted)
   useEffect(() => saveDeleted(deleted), [deleted])
@@ -92,10 +98,12 @@ export default function App() {
       case 'settings': return (
         <SyncSettings
           initial={loadSyncConfig()}
-          local={{ recipes, sessions, beans, logs, deleted }}
+          local={{ recipes, sessions, beans, logs, grindChecks, deleted }}
+          profile={profile}
+          onProfile={setProfile}
           onMerged={d => {
             setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans)
-            setLogs(d.logs); setDeleted(d.deleted)
+            setLogs(d.logs); setGrindChecks(d.grindChecks); setDeleted(d.deleted)
           }}
           onClose={() => goBack({ name: 'brew' })}
           onOpenGrinder={() => navigate({ name: 'grinder' })}
@@ -110,6 +118,9 @@ export default function App() {
       case 'grind': return (
         <GrindHelp
           profile={profile}
+          checks={grindChecks}
+          onAddCheck={c => setGrindChecks(cs => [...cs, c])}
+          onDeleteCheck={id => { markDeleted(id); setGrindChecks(cs => cs.filter(c => c.id !== id)) }}
           onBack={() => goBack({ name: 'brew' })}
           onOpenGrinder={() => navigate({ name: 'grinder' })}
         />
@@ -267,6 +278,10 @@ export default function App() {
 
   return (
     <div>
+      <StorageWarning
+        backup={() => ({ recipes, sessions, beans, logs, grindChecks, deleted })}
+        profile={profile}
+      />
       {content()}
       <nav className="tabs">
         <button className={tab === 'brew' ? 'on' : ''} onClick={() => navigate({ name: 'brew' })}>☕ Заваривание</button>

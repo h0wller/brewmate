@@ -222,3 +222,8 @@ textarea {
 
 /* помощь с помолом: группы чипов переносятся на новую строку */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+
+/* плашка «не удалось сохранить данные» */
+.storageWarn { background: #3a1d20; color: #ffb4ae; border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; font-size: 14px; }
+.storageWarnBtns { display: flex; gap: 8px; margin-top: 10px; }
+.storageWarnBtns .btn { margin: 0; flex: 1; }

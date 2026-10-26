@@ -2,6 +2,7 @@ import type { GrindSize } from '../grinders/size'
 import { GRIND_SIZES } from '../grinders/size'
 import type { Taste } from './advise'
 import type { CurvePoint } from './curve'
+import { safeWrite } from '../storageError'
 
 /* Замер помола: только числа. Само фото остаётся на телефоне и нигде не сохраняется. */
 export interface GrindCheck {
@@ -13,10 +14,18 @@ export interface GrindCheck {
   d10: number; d50: number; d90: number   // мкм
   n: number                  // сколько частиц посчитано
   taste?: Taste
+  logId?: string             // запись журнала, к которой относится замер (если выбрана)
+  createdAt?: number         // для слияния при синхронизации; у старых замеров = at
+  updatedAt?: number
 }
 
-const KEY = 'brewmate.grindchecks.v1'
+export const GRIND_CHECKS_KEY = 'brewmate.grindchecks.v1'
+const KEY = GRIND_CHECKS_KEY
 const MAX = 200
+
+/* Оставляем самые свежие MAX замеров, порядок — от старых к новым */
+export const capChecks = (list: GrindCheck[]): GrindCheck[] =>
+  [...list].sort((a, b) => a.at - b.at).slice(-MAX)
 
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
@@ -33,19 +42,19 @@ export function sanitizeChecks(raw: unknown): GrindCheck[] {
       d10: c.d10, d50: c.d50, d90: c.d90, n: c.n,
       grinderId: typeof c.grinderId === 'string' ? c.grinderId : undefined,
       taste: c.taste === 'sour' || c.taste === 'bitter' || c.taste === 'ok' ? c.taste : undefined,
+      logId: typeof c.logId === 'string' ? c.logId : undefined,
+      createdAt: num(c.createdAt) ? c.createdAt : c.at,
+      updatedAt: num(c.updatedAt) ? c.updatedAt : c.at,
     })
   }
-  return out.slice(-MAX)
+  return capChecks(out)
 }
 
 export const loadChecks = (): GrindCheck[] => {
   try { return sanitizeChecks(JSON.parse(localStorage.getItem(KEY) ?? '[]')) } catch { return [] }
 }
 
-export const saveChecks = (list: GrindCheck[]): void => {
-  try { localStorage.setItem(KEY, JSON.stringify(list.slice(-MAX))) }
-  catch (e) { console.warn('grind: не удалось сохранить замеры', e) }
-}
+export const saveChecks = (list: GrindCheck[]): void => { safeWrite(localStorage, KEY, capChecks(list)) }
 
 /* Точки кривой: только замеры этой кофемолки; по одной настройке берём самый свежий замер,
    чтобы старые снимки (другие жернова/износ) не тянули кривую */

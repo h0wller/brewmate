@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { mergeData, sanitizeData } from './merge'
+import { buildPayload, mergeData, sanitizeData } from './merge'
 import type { AppData } from './merge'
 
 export interface SyncConfig { url: string; anonKey: string; code: string }
@@ -26,7 +26,7 @@ export async function syncAll(cfg: SyncConfig, local: SyncData): Promise<SyncDat
   const merged = data?.data ? mergeData(local, sanitizeData(data.data)) : local
   const { error: e2 } = await sb
     .from('sync')
-    .upsert({ id: cfg.code, data: merged, updated_at: new Date().toISOString() })
+    .upsert({ id: cfg.code, data: buildPayload(data?.data, merged), updated_at: new Date().toISOString() })
   if (e2) throw new Error('push: ' + e2.message)
   return merged
 }
