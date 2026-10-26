@@ -1,7 +1,10 @@
 import type { BeanProfile, BrewLog, CuppingSession, Recipe } from '../types'
 import { migrateGrind } from '../grinders/grind'
 import { capChecks, sanitizeChecks } from '../grind/store'
-import type { GrindCheck } from '../grind/store'
+import type { GrindCheck, PhotoGrindProfile } from '../grind/store'
+import { sanitizePhotoProfiles } from '../grind/store'
+import type { DialInProfile } from '../beans/dialInProfile'
+import { sanitizeDialInProfiles } from '../beans/dialInProfile'
 
 /* id → время удаления (мс). Нужны, чтобы удалённое не «воскресало» при синхронизации */
 export type Tombstones = Record<string, number>
@@ -12,12 +15,14 @@ export interface AppData {
   beans: BeanProfile[]
   logs: BrewLog[]
   grindChecks: GrindCheck[]
+  dialInProfiles: DialInProfile[]
+  photoProfiles: PhotoGrindProfile[]
   deleted: Tombstones
 }
 
 interface Item { id: string; createdAt?: number; updatedAt?: number }
 
-export const emptyData = (): AppData => ({ recipes: [], sessions: [], beans: [], logs: [], grindChecks: [], deleted: {} })
+export const emptyData = (): AppData => ({ recipes: [], sessions: [], beans: [], logs: [], grindChecks: [], dialInProfiles: [], photoProfiles: [], deleted: {} })
 
 /* пометить запись как изменённую сейчас */
 export const stamp = <T extends object>(x: T): T & { updatedAt: number } =>
@@ -47,6 +52,8 @@ export function sanitizeData(raw: unknown): AppData {
     beans: cleanList<BeanProfile>(r.beans),
     logs: cleanList<BrewLog>(r.logs).map(migrateGrind),
     grindChecks: sanitizeChecks(r.grindChecks),   // нет в старых копиях и на сервере — тогда пусто
+    dialInProfiles: sanitizeDialInProfiles(r.dialInProfiles),
+    photoProfiles: sanitizePhotoProfiles(r.photoProfiles),
     deleted: cleanDeleted(r.deleted),
   }
 }
@@ -73,6 +80,31 @@ function mergeList<T extends Item>(local: T[], remote: T[], dead: Tombstones): T
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
 }
 
+/* Dial-in snapshots are keyed by grinder + method + bean + roast date; latest savedAt wins. */
+function mergeDialInProfiles(local: DialInProfile[], remote: DialInProfile[], dead: Tombstones): DialInProfile[] {
+  const map = new Map<string, DialInProfile>()
+  const keyOf = (p: DialInProfile) => JSON.stringify([p.grinderId, p.method, p.beanId ?? null, p.roastDate ?? null])
+  for (const p of [...remote, ...local]) {
+    const deletedAt = dead[p.id]
+    if (deletedAt !== undefined && p.savedAt <= deletedAt) continue
+    const key = keyOf(p)
+    const current = map.get(key)
+    if (!current || p.savedAt >= current.savedAt) map.set(key, p)
+  }
+  return [...map.values()].sort((a, b) => b.savedAt - a.savedAt)
+}
+
+/* Photo recommendations have no stable id; use grinder + grind size and latest updatedAt. */
+function mergePhotoProfiles(local: PhotoGrindProfile[], remote: PhotoGrindProfile[]): PhotoGrindProfile[] {
+  const map = new Map<string, PhotoGrindProfile>()
+  for (const p of [...remote, ...local]) {
+    const key = JSON.stringify([p.grinderId, p.size])
+    const current = map.get(key)
+    if (!current || p.updatedAt >= current.updatedAt) map.set(key, p)
+  }
+  return [...map.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
 export function mergeData(local: AppData, remote: AppData): AppData {
   const deleted = mergeDeleted(local.deleted, remote.deleted)
   return {
@@ -81,6 +113,8 @@ export function mergeData(local: AppData, remote: AppData): AppData {
     beans: mergeList(local.beans, remote.beans, deleted),
     logs: mergeList(local.logs, remote.logs, deleted),
     grindChecks: capChecks(mergeList(local.grindChecks, remote.grindChecks, deleted)),
+    dialInProfiles: mergeDialInProfiles(local.dialInProfiles, remote.dialInProfiles, deleted),
+    photoProfiles: mergePhotoProfiles(local.photoProfiles, remote.photoProfiles),
     deleted,
   }
 }
