@@ -169,10 +169,16 @@ export function recipeFromBean(
     { duration: 240, pourTo: water, note: 'залить и настоять 4 мин' },
     { duration: 60, pourTo: water, note: 'сломать корку, снять пену' },
   ]
-  else if (method === 'moccamaster') steps = [
-    { duration: 30, pourTo: 0, note: 'Промой фильтр, засыпь кофе и выровняй слой в корзине.' },
-    { duration: 240, pourTo: water, note: 'Запусти цикл Moccamaster и дождись полного стекания.' },
-  ]
+  else if (method === 'moccamaster') {
+    /* Ручное предсмачивание перед запуском автоматического цикла.
+       В резервуар наливается остаток, чтобы предсмачивание не увеличило общую пропорцию. */
+    const prewet = Math.min(Math.round(dose * 2.5), water)
+    steps = [
+      { duration: 30, pourTo: 0, note: 'Промой бумажный фильтр горячей водой, прогрей корзину и слей воду. Засыпь кофе и выровняй слой.' },
+      { duration: 35, pourTo: prewet, note: `Предсмачивание: равномерно увлажни весь кофе ${prewet} г воды (около 2,5× дозы). Подожди 30–40 сек для дегазации.` },
+      { duration: 240, pourTo: water, note: `Запусти Moccamaster. В резервуар налей оставшиеся ${water - prewet} г воды, а не полный объём рецепта; дождись завершения цикла и стекания.` },
+    ]
+  }
   else if (method === 'aero') steps = [
     { duration: 30, pourTo: water, note: 'залить и перемешать' },
     { duration: 90, pourTo: water, note: 'продавить' },
