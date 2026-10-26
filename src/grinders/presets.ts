@@ -73,7 +73,7 @@ export const GRINDER_PRESETS: Record<string, GrinderScale> = {
 
   // ================= Eureka =================
   'eureka-atom-75':            { unit: 'об.', points: [0.3, 0.8, 2.2, 2.7, 3.2, 3.8, 4.4], decimals: 1, burrs: 'flat', dialRange: '0–5 об.' },
-  'eureka-drogheria':          { unit: 'дел.', points: [1.0, 2.2, 5.5, 6.8, 8.0, 9.5, 11.0], decimals: 1, burrs: 'flat', dialRange: '0–12 (85 мм)' },
+  'eureka-drogheria': { unit: 'дел.', points: [1.5, 2.3, 3.8, 4.8, 5.6, 6.5, 7.5], decimals: 1, burrs: 'flat', dialRange: '1–8 (85 мм)' },
   'eureka-mignon-crono':       { unit: 'об.', points: [0.4, 0.9, 2.4, 2.9, 3.4, 4.0, 4.6], decimals: 1, burrs: 'flat', dialRange: '0–5 об.' },
   'eureka-mignon-libra':       { unit: 'об.', points: [0.3, 0.8, 2.3, 2.8, 3.3, 3.9, 4.5], decimals: 1, burrs: 'flat', dialRange: '0–5 об.' },
   'eureka-mignon-silenzio':    { unit: 'об.', points: [0.3, 0.8, 2.3, 2.8, 3.3, 3.9, 4.5], decimals: 1, burrs: 'flat', dialRange: '0–5 об.' },
