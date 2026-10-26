@@ -178,6 +178,14 @@ describe('профили кофемолки в синхронизации', () =
     expect(merged.dialInProfiles).toEqual([])
   })
 
+  it('удаление свежего dial-in не возвращает старую версию того же естественного ключа', () => {
+    const merged = mergeData(
+      data({ dialInProfiles: [dialIn('old-id', 10)] }),
+      data({ dialInProfiles: [dialIn('new-id', 20)], deleted: { 'new-id': 25 } }),
+    )
+    expect(merged.dialInProfiles).toEqual([])
+  })
+
   it('photo-профиль объединяется по grinderId + size, побеждает updatedAt', () => {
     const merged = mergeData(
       data({ photoProfiles: [photo(12, 10), photo(15, 12, { size: 'coarse' })] }),
