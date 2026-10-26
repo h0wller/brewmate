@@ -26,7 +26,7 @@ export type VisionBenchRecord = {
 
 const DB_NAME = 'brewmate-vision-bench'
 const STORE_NAME = 'samples'
-const MAX_IMPORT_BYTES = 60 * 1024 * 1024
+const MAX_IMPORT_BYTES = 100 * 1024 * 1024
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
