@@ -260,7 +260,29 @@ describe('summarizeBeanHistory', () => {
     expect(result.balancedBrews).toBe(2)
     expect(result.meanRating).toBe(4.5)
     expect(result.meanRatio).toBe(16.5)
-    expect(result.medianTempC).toBe(92)
+    expect(result.medianTempC).toBe(93)
+    expect(result.tempRange).toEqual([92, 94])
+    expect(result.ratioRange).toEqual([16, 17])
+    expect(result.confidence).toBe('early-signal')
+  })
+
+  it('marks at least three consistently balanced high-rated cups as a repeatable signal', () => {
+    const result = summarizeBeanHistory(bean, 'moccamaster', 'comandante-c40', [
+      sameSetup({ id: 'a', rating: 4, taste: 'balanced' }),
+      sameSetup({ id: 'b', rating: 5, taste: 'balanced' }),
+      sameSetup({ id: 'c', rating: 4, taste: 'balanced' }),
+    ])
+    expect(result.confidence).toBe('repeatable')
+    expect(result.confidenceNote).toContain('не доказывает причинность')
+  })
+
+  it('does not call three poorly rated or unbalanced cups a positive signal', () => {
+    const result = summarizeBeanHistory(bean, 'moccamaster', 'comandante-c40', [
+      sameSetup({ id: 'a', rating: 4, taste: 'sour' }),
+      sameSetup({ id: 'b', rating: 2, taste: 'balanced' }),
+      sameSetup({ id: 'c', rating: 3, taste: 'bitter' }),
+    ])
+    expect(result.confidence).toBe('early-signal')
   })
 
   it('does not silently mix legacy records without roast-date snapshots', () => {
