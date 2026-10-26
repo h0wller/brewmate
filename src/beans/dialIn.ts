@@ -70,6 +70,11 @@ export function makeTrialRecipe(log: BrewLog): Recipe | undefined {
     steps: log.steps.map((s: BrewStep) => ({ ...s })),
     createdAt: now,
     updatedAt: now,
+    trial: log.taste ? {
+      sourceLogId: log.id,
+      variable: log.taste === 'weak' ? 'dose' : 'grind',
+      baselineTaste: log.taste,
+    } : undefined,
   }
 
   if (log.taste === 'sour' || log.taste === 'bitter') {
