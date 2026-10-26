@@ -20,9 +20,9 @@ export const pickBean = (b: any, base: BeanProfile): BeanProfile => ({
   ...base,
   name: typeof b?.name === 'string' && b.name ? b.name : base.name,
   origin: typeof b?.origin === 'string' ? b.origin : base.origin,
-  process: typeof b?.process === 'string' ? b.process : base.process,
-  roastLevel: ['light', 'medium', 'dark'].includes(b?.roastLevel) ? b.roastLevel as RoastLevel : base.roastLevel,
-  roastDate: typeof b?.roastDate === 'string' ? b.roastDate : base.roastDate,
+  process: base.process || (typeof b?.process === 'string' ? b.process : undefined),
+  roastLevel: base.roastLevel ?? (['light', 'medium', 'dark'].includes(b?.roastLevel) ? b.roastLevel as RoastLevel : undefined),
+  roastDate: base.roastDate || (typeof b?.roastDate === 'string' ? b.roastDate : undefined),
   notes: typeof b?.notes === 'string' && b.notes ? b.notes : base.notes,
 })
 
