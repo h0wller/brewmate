@@ -109,6 +109,7 @@ describe('smartSettingFor', () => {
     // неподтверждённые пресеты не выдаются как настройка готового рецепта
     expect(smartSettingFor(profile, 'medium', 3.0)).toBeUndefined()
     expect(smartSettingFor({ grinder: { id: 'comandante-c40' }, calibration: {} }, 'medium_coarse', 4)).toBeUndefined()
+    expect(smartSettingFor({ grinder: { id: 'comandante-c40' }, calibration: factoryCalibration('comandante-c40') }, 'medium_coarse', 4)).toBeUndefined()
   })
 })
 
