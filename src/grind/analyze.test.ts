@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_SINGLE_UM, detectCoinCircle, equivDiameterUm, otsu, particleAreaLimits, scaleFromPoints, segment, summarize, toGray } from './analyze'
+import { MAX_SINGLE_UM, detectCoinCircle, equivDiameterUm, otsu, particleAreaLimits, scaleFromPoints, segment, summarize, toGray, computeSieveCalibrationFactor } from './analyze'
 import type { Img } from './analyze'
 
 interface Disc { x: number; y: number; r: number }
@@ -67,6 +67,14 @@ describe('измерение размера', () => {
     expect(stats!.flags).toEqual([])
   })
 
+  it('коэффициент коррекции пропорционально масштабирует D10, D50 и D90', () => {
+    const corrected = summarize(segment(img), PX_PER_MM, { calibrationFactor: 0.82 })!
+    expect(corrected.d10).toBeCloseTo(stats!.d10 * 0.82, 8)
+    expect(corrected.d50).toBeCloseTo(stats!.d50 * 0.82, 8)
+    expect(corrected.d90).toBeCloseTo(stats!.d90 * 0.82, 8)
+    expect(summarize(segment(img), PX_PER_MM)!.d50).toBeCloseTo(stats!.d50, 8)
+  })
+
   it('более мелкий помол даёт меньший D50, более крупный — больший', () => {
     const fine = summarize(segment(makeImage(SIZE, SIZE, grid(15, 15, 40, () => 4))), PX_PER_MM)!
     const coarse = summarize(segment(makeImage(SIZE, SIZE, grid(15, 15, 40, () => 9))), PX_PER_MM)!
@@ -94,6 +102,16 @@ describe('измерение размера', () => {
     const excl = summarize(segment(withCoin, { exclude: [{ cx: 300, cy: 300, r: 100 }] }), PX_PER_MM)!
     expect(raw.d90).toBeGreaterThan(2000)            // без исключения монета «ломает» результат
     expect(Math.abs(excl.d90 - 600) / 600).toBeLessThan(0.1)
+  })
+})
+
+describe('калибровка по ситам', () => {
+  it('считает отношение ситового D50 к сырому D50 и ограничивает коэффициент', () => {
+    expect(computeSieveCalibrationFactor(900, '600-900')).toBeCloseTo(735 / 900, 8)
+    expect(computeSieveCalibrationFactor(0, '600-900')).toBeNull()
+    expect(computeSieveCalibrationFactor(-1, '600-900')).toBeNull()
+    expect(computeSieveCalibrationFactor(1, 'over-1400')).toBe(1.45)
+    expect(computeSieveCalibrationFactor(10000, 'under-600')).toBe(0.55)
   })
 })
 
