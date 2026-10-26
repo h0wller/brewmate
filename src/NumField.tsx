@@ -19,10 +19,9 @@ export function NumField({
 
   useEffect(() => {
     const cur = parseNum(text)
-    const want = value ? value : null
+    const want = value ?? null
     if (cur !== want) setText(fmtNum(value))
-    // text намеренно не в зависимостях: иначе поле перетиралось бы при каждом нажатии
-  }, [value])
+  }, [value, text])
 
   return (
     <input
