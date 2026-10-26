@@ -191,6 +191,7 @@ export default function App() {
             key={b.id}
             bean={b}
             profile={profile}
+            history={logs}
             onOpenGrinder={() => navigate({ name: 'grinder' })}
             onOpenGrindHelp={() => navigate({ name: 'grind' })}
             onOpenAI={() => navigate({ name: 'ai' })}
@@ -235,6 +236,8 @@ export default function App() {
           <LogView
             key={l.id}
             log={l}
+            sourceLog={l.trial ? logs.find(x => x.id === l.trial?.sourceLogId) : l.reference ? logs.find(x => x.id === l.reference?.sourceLogId) : undefined}
+            history={logs}
             beans={beans}
             canRepeat={!!l.recipeId && recipes.some(r => r.id === l.recipeId)}
             onChange={nl => setLogs(ls => ls.map(x => x.id === nl.id ? stamp(nl) : x))}
@@ -243,6 +246,11 @@ export default function App() {
             check={[...grindChecks].filter(c => c.logId === l.id).sort((a, b) => b.at - a.at)[0]}
             onCheckGrind={() => navigate({ name: 'grind', logId: l.id })}
             onDelete={delLog}
+            onMakeTrial={r => {
+              const saved = stamp(r)
+              setRecipes(rs => [saved, ...rs])
+              navigate({ name: 'timer', id: saved.id })
+            }}
           />
         ) : <NotFound to={{ name: 'journal' }} label="Журнал" />
       }

@@ -1,0 +1,566 @@
+import type { BrewLog, BrewStep, Recipe } from '../types'
+import { GRIND_SIZES } from '../grinders/size'
+import { TASTE_LABEL } from '../brewlog/taste'
+import type { GrindSize } from '../grinders/size'
+import { uid } from '../storage'
+
+export interface DialInAdvice {
+  title: string
+  reason: string
+  action: string
+  confidence: 'starting-point' | 'no-change'
+  sourceUrl: string
+}
+
+export interface TrialAssessment {
+  verdict: 'promising' | 'worse' | 'mixed' | 'inconclusive'
+  summary: string
+  evidence: string[]
+}
+
+const COMPASS_URL = 'https://www.baristahustle.com/coffee-compass/'
+
+/**
+ * Compare an experimental brew with its source. Never call a single cup proof:
+ * rating/taste are sensory evidence, while time/yield are context, not quality scores.
+ */
+export function assessTrialOutcome(source: BrewLog | undefined, trial: BrewLog): TrialAssessment {
+  if (!source) return {
+    verdict: 'inconclusive',
+    summary: 'Исходная чашка не найдена: сравнение невозможно.',
+    evidence: [],
+  }
+
+  const evidence: string[] = []
+  const sourceGrinder = source.grind?.grinder?.id
+  const trialGrinder = trial.grind?.grinder?.id
+  const mismatch =
+    source.method !== trial.method ||
+    (source.beanId && source.beanId !== trial.beanId) ||
+    (source.beanRoastDate && source.beanRoastDate !== trial.beanRoastDate) ||
+    (sourceGrinder && sourceGrinder !== trialGrinder)
+  if (mismatch) return {
+    verdict: 'inconclusive',
+    summary: 'Эти чашки различаются по зерну, методу, дате обжарки или модели кофемолки. Их нельзя считать чистым сравнением эксперимента.',
+    evidence: ['Сначала выровняй контекст: зерно, метод, обжарка и кофемолка.'],
+  }
+
+  const ratingDelta = source.rating !== undefined && trial.rating !== undefined
+    ? trial.rating - source.rating
+    : undefined
+  if (ratingDelta !== undefined) {
+    evidence.push(`Оценка: ${source.rating}/5 → ${trial.rating}/5 (${ratingDelta > 0 ? '+' : ''}${ratingDelta})`)
+  }
+  if (source.taste && trial.taste) {
+    evidence.push(`Вкус: ${TASTE_LABEL[source.taste]} → ${TASTE_LABEL[trial.taste]}`)
+  }
+  if (source.durationS > 0 && trial.durationS > 0) {
+    const delta = trial.durationS - source.durationS
+    evidence.push(`Время: ${source.durationS} → ${trial.durationS} с (${delta > 0 ? '+' : ''}${delta} с)`)
+  }
+  if (source.finalG !== undefined && trial.finalG !== undefined) {
+    evidence.push(`Выход: ${source.finalG.toFixed(1)} → ${trial.finalG.toFixed(1)} г`)
+  }
+
+  const tasteImproved = Boolean(source.taste && trial.taste &&
+    source.taste !== 'balanced' && trial.taste === 'balanced')
+  const ratingImproved = ratingDelta !== undefined && ratingDelta > 0
+  const ratingWorse = ratingDelta !== undefined && ratingDelta < 0
+  const tasteWorse = Boolean(source.taste && trial.taste &&
+    source.taste === 'balanced' && trial.taste !== 'balanced')
+
+  if (ratingImproved && !tasteWorse || tasteImproved && !ratingWorse) return {
+    verdict: 'promising',
+    summary: 'Есть положительный сигнал. Повтори пробу с тем же зерном и методом, прежде чем считать настройку подтверждённой.',
+    evidence,
+  }
+  if (ratingWorse || tasteWorse) return {
+    verdict: 'worse',
+    summary: 'Результат выглядит хуже исходного. Рассмотри возврат к исходной настройке; одна чашка всё ещё не доказывает причинность.',
+    evidence,
+  }
+  if (ratingDelta !== undefined && ratingDelta === 0 && source.taste && trial.taste && source.taste === trial.taste) return {
+    verdict: 'mixed',
+    summary: 'Заметного улучшения по записанным сенсорным данным нет. Не меняй дополнительные параметры одновременно.',
+    evidence,
+  }
+  return {
+    verdict: 'inconclusive',
+    summary: 'Недостаточно сопоставимых сенсорных данных. Отметь вкус и оценку обеих чашек; время и выход сами по себе не говорят, какая чашка вкуснее.',
+    evidence,
+  }
+}
+
+/** Conservative next-cup advice based on logged sensory outcome. */
+export function diagnoseNextCup(log: BrewLog): DialInAdvice {
+  if (log.taste === 'sour') return {
+    title: 'Проверить экстракцию',
+    reason: 'Кислота сама по себе не доказывает недоэкстракцию, но это разумная первая гипотеза при отсутствии других данных.',
+    action: 'На следующей чашке сделай помол на один небольшой шаг мельче. Не меняй одновременно температуру, дозу и пропорцию.',
+    confidence: 'starting-point',
+    sourceUrl: COMPASS_URL,
+  }
+  if (log.taste === 'bitter') return {
+    title: 'Проверить чрезмерную экстракцию',
+    reason: 'Горечь может быть связана с экстракцией, но также с обжаркой и самим зерном; меняем только один параметр, чтобы проверить гипотезу.',
+    action: 'На следующей чашке сделай помол на один небольшой шаг крупнее. Не задавай универсальное число кликов: используй шкалу выбранной кофемолки.',
+    confidence: 'starting-point',
+    sourceUrl: COMPASS_URL,
+  }
+  if (log.taste === 'weak') return {
+    title: 'Проверить крепость напитка',
+    reason: 'Водянистость чаще требует проверить концентрацию, а не автоматически менять помол: слабая чашка не равна недоэкстрагированной.',
+    action: `Оставь воду, помол и температуру без изменений, увеличь дозу кофе примерно на 5% (с ${log.doseG} до ${Math.round(log.doseG * 1.05 * 10) / 10} г).`,
+    confidence: 'starting-point',
+    sourceUrl: COMPASS_URL,
+  }
+  return {
+    title: 'Не менять рецепт',
+    reason: 'Для сбалансированной чашки нет сенсорного основания менять настройки.',
+    action: 'Сохрани текущий рецепт как контрольный. Меняй параметры только при наличии конкретной цели.',
+    confidence: 'no-change',
+    sourceUrl: COMPASS_URL,
+  }
+}
+
+function adjacentSize(size: GrindSize | undefined, direction: -1 | 1): GrindSize | undefined {
+  if (!size) return undefined
+  const index = GRIND_SIZES.indexOf(size)
+  if (index < 0) return undefined
+  const next = index + direction
+  if (next < 0 || next >= GRIND_SIZES.length) return undefined
+  return GRIND_SIZES[next]
+}
+
+/** Creates a separate, explicitly experimental recipe; the source log is never mutated. */
+export function makeTrialRecipe(log: BrewLog): Recipe | undefined {
+  if (!log.taste || log.taste === 'balanced') return undefined
+  const now = Date.now()
+  const base: Recipe = {
+    id: uid(),
+    title: `Проба · ${log.title}`,
+    method: log.method,
+    beanId: log.beanId,
+    beanRoastDate: log.beanRoastDate,
+    doseG: log.doseG,
+    waterG: log.waterG,
+    tempC: log.tempC,
+    grind: log.grind ? { ...log.grind } : undefined,
+    steps: log.steps.map((s: BrewStep) => ({ ...s })),
+    createdAt: now,
+    updatedAt: now,
+    trial: {
+      sourceLogId: log.id,
+      variable: log.taste === 'weak' ? 'dose' : 'grind',
+      baselineTaste: log.taste,
+    },
+  }
+
+  if (log.taste === 'sour' || log.taste === 'bitter') {
+    const direction = log.taste === 'sour' ? -1 : 1
+    const size = adjacentSize(log.grind?.size, direction)
+    if (log.grind && size) {
+      // A dial setting for the previous particle-size target is not valid for the new target.
+      base.grind = { ...log.grind, size, setting: undefined }
+    } else {
+      // Without a known size, keep the record honest and ask for a small manual adjustment.
+      base.grind = log.grind ? { grinder: log.grind.grinder } : undefined
+    }
+  } else if (log.taste === 'weak') {
+    base.doseG = Math.round(log.doseG * 1.05 * 10) / 10
+  }
+  return base
+}
+
+export interface NextExperimentPlan {
+  kind: 'adjust' | 'repeat' | 'stop'
+  title: string
+  reason: string
+  recipe?: Recipe
+}
+
+/**
+ * Choose a next step from recorded sensory feedback. This is deliberately
+ * conservative: repeat a balanced experimental cup before promoting it, change
+ * one variable for a non-balanced cup, and avoid suggesting an already-tried
+ * adjustment as if it were new.
+ */
+export function planNextExperiment(log: BrewLog, history: BrewLog[]): NextExperimentPlan {
+  if (!log.taste) return {
+    kind: 'stop',
+    title: 'Сначала оцени вкус',
+    reason: 'Без сенсорной отметки нельзя обоснованно выбирать следующий эксперимент.',
+  }
+
+  const rootId = log.trial?.sourceLogId ?? log.id
+  const root = history.find(item => item.id === rootId) ?? log
+  if (log.taste === 'balanced') {
+    const recipe: Recipe = {
+      id: uid(),
+      title: `Повтор для проверки · ${log.title}`,
+      method: log.method,
+      beanId: log.beanId,
+      beanRoastDate: log.beanRoastDate,
+      doseG: log.doseG,
+      waterG: log.waterG,
+      tempC: log.tempC,
+      grind: log.grind ? { ...log.grind } : undefined,
+      steps: log.steps.map(step => ({ ...step })),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      trial: {
+        sourceLogId: rootId,
+        variable: log.trial?.variable ?? 'grind',
+        baselineTaste: log.trial?.baselineTaste ?? root.taste ?? 'balanced',
+      },
+    }
+    return {
+      kind: 'repeat',
+      title: 'Повторить без изменений',
+      reason: 'Баланс — положительный сигнал, но не доказательство. Повтори ту же настройку и оцени вкус до изменения параметров.',
+      recipe,
+    }
+  }
+
+  const candidate = makeTrialRecipe(log)
+  if (!candidate) return {
+    kind: 'stop',
+    title: 'Не менять рецепт вслепую',
+    reason: 'Для текущей отметки нет безопасного однофакторного шага. Проверь контекст и запиши более точную сенсорную заметку.',
+  }
+
+  candidate.trial = {
+    sourceLogId: rootId,
+    variable: log.taste === 'weak' ? 'dose' : 'grind',
+    baselineTaste: log.trial?.baselineTaste ?? root.taste ?? log.taste,
+  }
+
+  const candidateSignature = trialSignature({
+    ...log,
+    ...candidate,
+    id: '__candidate__',
+    trial: candidate.trial,
+    startedAt: 0,
+    durationS: 0,
+    createdAt: candidate.createdAt,
+  } as BrewLog)
+  const alreadyTried = history.some(item =>
+    item.id !== log.id &&
+    item.trial?.sourceLogId === rootId &&
+    trialSignature(item) === candidateSignature,
+  )
+  if (alreadyTried) return {
+    kind: 'repeat',
+    title: 'Повторить проверенный шаг',
+    reason: 'Такой вариант уже пробовали. Вместо повторного изменения параметров повтори текущую настройку, чтобы проверить воспроизводимость.',
+    recipe: {
+      ...candidate,
+      title: `Повтор для проверки · ${log.title}`,
+      doseG: log.doseG,
+      waterG: log.waterG,
+      tempC: log.tempC,
+      grind: log.grind ? { ...log.grind } : undefined,
+      steps: log.steps.map(step => ({ ...step })),
+      trial: {
+        sourceLogId: rootId,
+        variable: log.trial?.variable ?? candidate.trial!.variable,
+        baselineTaste: log.trial?.baselineTaste ?? root.taste ?? log.taste,
+      },
+    },
+  }
+
+  return {
+    kind: 'adjust',
+    title: 'Изменить один параметр',
+    reason: 'Предлагается один небольшой шаг, чтобы результат можно было интерпретировать. Сохрани дозу, температуру и остальные параметры.',
+    recipe: candidate,
+  }
+}
+
+/**
+ * Finds a prior high-rated balanced cup for the same bean and brewing method.
+ * Requires a stable bean identifier/name match; never compares unrelated coffees.
+ */
+export function findBestComparableBrew(
+  current: BrewLog,
+  history: BrewLog[],
+  context: { grinderId?: string; roastDate?: string } = {},
+): BrewLog | undefined {
+  const hasBeanIdentity = Boolean(current.beanId || current.beanName)
+  if (!hasBeanIdentity) return undefined
+  return history
+    .filter(candidate => {
+      if (candidate.id === current.id || candidate.method !== current.method) return false
+      const sameBean = current.beanId
+        ? candidate.beanId === current.beanId
+        : !candidate.beanId && candidate.beanName === current.beanName
+      const sameGrinder = !Object.prototype.hasOwnProperty.call(context, 'grinderId') ||
+        (candidate.grind?.grinder?.id ?? undefined) === context.grinderId
+      const sameRoast = !Object.prototype.hasOwnProperty.call(context, 'roastDate') ||
+        candidate.beanRoastDate === context.roastDate
+      return sameBean && sameGrinder && sameRoast &&
+        candidate.rating !== undefined && candidate.rating >= 4 && candidate.taste === 'balanced'
+    })
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || b.startedAt - a.startedAt)[0]
+}
+
+
+/**
+ * Build an explicitly user-selected recipe from the best logged balanced cup
+ * for the same bean name and method. Historical values are preserved proportionally;
+ * this is a starting point, not an automatic override of the local recommendation.
+ */
+export function recipeFromBestHistoricalBrew(
+  bean: { id: string; name: string },
+  method: string,
+  doseG: number,
+  history: BrewLog[],
+  context: { grinderId?: string; roastDate?: string } = {},
+): Recipe | undefined {
+  const name = bean.name.trim().toLocaleLowerCase()
+  if (!name || !Number.isFinite(doseG) || doseG <= 0) return undefined
+  const reference = history
+    .filter(log =>
+      log.method === method &&
+      (!Object.prototype.hasOwnProperty.call(context, 'grinderId') || (log.grind?.grinder?.id ?? undefined) === context.grinderId) &&
+      (!Object.prototype.hasOwnProperty.call(context, 'roastDate') || log.beanRoastDate === context.roastDate) &&
+      log.rating !== undefined && log.rating >= 4 &&
+      log.taste === 'balanced' &&
+      (log.beanId === bean.id || (!log.beanId && log.beanName?.trim().toLocaleLowerCase() === name)),
+    )
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || b.startedAt - a.startedAt)[0]
+  if (!reference) return undefined
+
+  const scale = doseG / reference.doseG
+  const waterG = Math.round(reference.waterG * scale)
+  const now = Date.now()
+  return {
+    id: uid(),
+    title: `${bean.name} · проверенный ориентир · ${reference.rating}/5`,
+    reference: { sourceLogId: reference.id, sourceRating: reference.rating! },
+    method: reference.method,
+    beanId: bean.id,
+    beanRoastDate: context.roastDate,
+    doseG,
+    waterG,
+    tempC: reference.tempC,
+    grind: reference.grind ? { ...reference.grind } : undefined,
+    steps: reference.steps.map(step => ({
+      ...step,
+      pourTo: Math.round(step.pourTo * scale),
+    })),
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+
+export interface RepeatabilityAssessment {
+  status: 'confirmed' | 'promising' | 'inconsistent' | 'insufficient'
+  trials: number
+  positive: number
+  worse: number
+  unchanged: number
+  summary: string
+}
+
+/**
+ * Assess repeatability across independent recorded trials of the same hypothesis.
+ * A single cup cannot confirm a setting; require at least three sensory-rated trials,
+ * and a two-thirds positive share, before calling the result repeatable.
+ */
+function trialSignature(log: BrewLog): string {
+  return JSON.stringify({
+    variable: log.trial?.variable,
+    doseG: log.doseG,
+    waterG: log.waterG,
+    tempC: log.tempC,
+    grindSize: log.grind?.size,
+    grinderId: log.grind?.grinder?.id,
+    grinderSetting: log.grind?.setting,
+    steps: log.steps.map(step => ({ duration: step.duration, pourTo: step.pourTo })),
+  })
+}
+
+export function assessTrialRepeatability(
+  source: BrewLog,
+  history: BrewLog[],
+  targetTrial?: BrewLog,
+): RepeatabilityAssessment {
+  const referenceTrial = targetTrial?.trial
+    ? targetTrial
+    : history.find(log => log.trial?.sourceLogId === source.id)
+  const targetSignature = referenceTrial?.trial ? trialSignature(referenceTrial) : undefined
+  const trials = history.filter(log =>
+    log.trial?.sourceLogId === source.id &&
+    (!targetSignature || trialSignature(log) === targetSignature) &&
+    (!referenceTrial?.trial || log.trial?.variable === referenceTrial.trial.variable) &&
+    log.method === source.method &&
+    log.id !== source.id &&
+    (source.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
+    log.method === source.method &&
+    (source.beanRoastDate ? log.beanRoastDate === source.beanRoastDate : !log.beanRoastDate) &&
+    (source.grind?.grinder?.id ? log.grind?.grinder?.id === source.grind.grinder.id : !log.grind?.grinder?.id) &&
+    log.taste !== undefined && typeof log.rating === 'number' && Number.isFinite(log.rating) && log.rating >= 1 && log.rating <= 5,
+  )
+
+  let positive = 0
+  let worse = 0
+  let unchanged = 0
+  for (const trial of trials) {
+    const ratingDelta = source.rating !== undefined && trial.rating !== undefined
+      ? trial.rating - source.rating
+      : undefined
+    const tasteImproved = Boolean(source.taste && trial.taste &&
+      source.taste !== 'balanced' && trial.taste === 'balanced')
+    const tasteWorse = Boolean(source.taste === 'balanced' && trial.taste && trial.taste !== 'balanced')
+    if ((ratingDelta !== undefined && ratingDelta > 0 && !tasteWorse) ||
+      (tasteImproved && !(ratingDelta !== undefined && ratingDelta < 0))) positive++
+    else if ((ratingDelta !== undefined && ratingDelta < 0) || tasteWorse) worse++
+    else unchanged++
+  }
+
+  if (trials.length < 3) return {
+    status: 'insufficient', trials: trials.length, positive, worse, unchanged,
+    summary: `Для оценки повторяемости нужно минимум 3 записанные пробы с сенсорной оценкой. Сейчас доступно: ${trials.length}.`,
+  }
+
+  const positiveShare = positive / trials.length
+  if (positiveShare >= 2 / 3 && worse === 0) return {
+    status: 'confirmed', trials: trials.length, positive, worse, unchanged,
+    summary: 'Результат повторяется в большинстве записанных проб без отмеченного ухудшения. Это подтверждает практическую воспроизводимость в этих условиях, но не универсальность настройки.',
+  }
+  if (positiveShare >= 2 / 3) return {
+    status: 'promising', trials: trials.length, positive, worse, unchanged,
+    summary: 'Большинство проб положительные, но есть и ухудшение. Результат перспективный, однако настройку пока рано считать устойчивой.',
+  }
+  if (worse > positive) return {
+    status: 'inconsistent', trials: trials.length, positive, worse, unchanged,
+    summary: 'Результаты не подтверждают устойчивое улучшение. Проверь повторяемость дозы, воды, зерна и техники перед дальнейшими изменениями.',
+  }
+  return {
+    status: 'inconsistent', trials: trials.length, positive, worse, unchanged,
+    summary: 'Результаты смешанные: пока недостаточно оснований считать настройку воспроизводимо лучшей.',
+  }
+}
+
+
+export interface TrialEvidenceConfidence {
+  status: 'hypothesis' | 'preliminary' | 'repeatable'
+  ratedTrials: number
+  balancedTrials: number
+  meanRating?: number
+  ratingRange?: [number, number]
+  summary: string
+}
+
+/**
+ * Grade evidence for one exact recipe signature. Only records with both a taste
+ * label and a 1–5 rating count; repeated settings show consistency, not causality.
+ */
+export function assessTrialEvidenceConfidence(
+  source: BrewLog,
+  history: BrewLog[],
+  targetTrial: BrewLog,
+): TrialEvidenceConfidence {
+  if (!targetTrial.trial) return {
+    status: 'hypothesis', ratedTrials: 0, balancedTrials: 0,
+    summary: 'Это пока гипотеза: запись не привязана к экспериментальной серии.',
+  }
+  const signature = trialSignature(targetTrial)
+  const rated = history.filter(log =>
+    log.trial?.sourceLogId === source.id &&
+    log.trial.variable === targetTrial.trial!.variable &&
+    trialSignature(log) === signature &&
+    log.method === source.method &&
+    (source.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
+    (source.beanRoastDate ? log.beanRoastDate === source.beanRoastDate : !log.beanRoastDate) &&
+    (source.grind?.grinder?.id ? log.grind?.grinder?.id === source.grind.grinder.id : !log.grind?.grinder?.id) &&
+    log.taste !== undefined &&
+    typeof log.rating === 'number' && log.rating >= 1 && log.rating <= 5
+  )
+  const ratings = rated.map(log => log.rating!)
+  const balancedTrials = rated.filter(log => log.taste === 'balanced').length
+  const meanRating = ratings.length
+    ? Math.round((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length) * 100) / 100
+    : undefined
+  const ratingRange: [number, number] | undefined = ratings.length
+    ? [Math.min(...ratings), Math.max(...ratings)]
+    : undefined
+
+  if (rated.length >= 3 && balancedTrials === rated.length && ratingRange![1] - ratingRange![0] <= 1) return {
+    status: 'repeatable', ratedTrials: rated.length, balancedTrials, meanRating, ratingRange,
+    summary: 'Предварительный практический результат воспроизведён минимум в трёх чашках с балансом и близкими оценками. Это поддерживает повторяемость в записанных условиях, но не доказывает, что именно изменение вызвало улучшение.',
+  }
+  if (rated.length >= 2 && balancedTrials >= 2 && (ratingRange![1] - ratingRange![0] <= 1)) return {
+    status: 'preliminary', ratedTrials: rated.length, balancedTrials, meanRating, ratingRange,
+    summary: 'Есть предварительный положительный сигнал: несколько чашек оценены как сбалансированные, оценки близки. Нужны дополнительные повторы.',
+  }
+  return {
+    status: 'hypothesis', ratedTrials: rated.length, balancedTrials, meanRating, ratingRange,
+    summary: rated.length === 0
+      ? 'Пока нет чашек с одновременно записанными вкусом и оценкой для этой точной настройки.'
+      : 'Данных пока недостаточно для устойчивого вывода. Продолжай фиксировать и вкус, и оценку, не смешивая разные настройки.',
+  }
+}
+
+
+export interface BeanHistoryEvidence {
+  brews: number
+  ratedBrews: number
+  balancedBrews: number
+  meanRating?: number
+  meanRatio?: number
+  ratioRange?: [number, number]
+  medianTempC?: number
+  tempRange?: [number, number]
+  confidence: 'insufficient' | 'early-signal' | 'repeatable'
+  confidenceNote: string
+  grindSizes: string[]
+  roastDate?: string
+}
+
+/**
+ * Summarize only comparable brews: exact bean identity, method, grinder model and
+ * roast-date snapshot. Missing historical snapshots are not silently treated as matches.
+ */
+export function summarizeBeanHistory(
+  bean: { id: string; roastDate?: string },
+  method: string,
+  grinderId: string | undefined,
+  history: BrewLog[],
+): BeanHistoryEvidence {
+  const comparable = history.filter(log =>
+    log.beanId === bean.id &&
+    log.method === method &&
+    (log.grind?.grinder?.id ?? undefined) === grinderId &&
+    (bean.roastDate ? log.beanRoastDate === bean.roastDate : !log.beanRoastDate),
+  )
+  const rated = comparable.filter(log => log.rating !== undefined && Number.isFinite(log.rating))
+  const temps = comparable.map(log => log.tempC).filter(Number.isFinite).sort((a, b) => a - b)
+  const ratios = comparable.filter(log => log.doseG > 0 && log.waterG > 0).map(log => log.waterG / log.doseG).sort((a, b) => a - b)
+  const sizes = [...new Set(comparable.map(log => log.grind?.size).filter((v): v is GrindSize => Boolean(v)))]
+  const balancedRated = rated.filter(log => log.taste === 'balanced' && (log.rating ?? 0) >= 4).length
+  const confidence: BeanHistoryEvidence['confidence'] =
+    rated.length >= 3 && balancedRated / rated.length >= 2 / 3 ? 'repeatable'
+      : rated.length >= 2 ? 'early-signal' : 'insufficient'
+  const confidenceNote = confidence === 'repeatable'
+    ? 'Есть повторяющийся положительный сигнал минимум в трёх оценённых чашках. Это применимо только к сопоставимым условиям и не доказывает причинность.'
+    : confidence === 'early-signal'
+      ? 'Есть первые данные, но их недостаточно для уверенного вывода. Используй как ориентир, а не как подтверждённый профиль.'
+      : 'Пока недостаточно оценённых чашек, чтобы судить о повторяемости. Рецепт остаётся стартовой гипотезой.'
+  return {
+    brews: comparable.length,
+    confidence,
+    confidenceNote,
+    ratedBrews: rated.length,
+    balancedBrews: comparable.filter(log => log.taste === 'balanced').length,
+    meanRating: rated.length ? Math.round((rated.reduce((sum, log) => sum + (log.rating ?? 0), 0) / rated.length) * 10) / 10 : undefined,
+    meanRatio: ratios.length ? Math.round((ratios.reduce((sum, value) => sum + value, 0) / ratios.length) * 10) / 10 : undefined,
+    ratioRange: ratios.length ? [ratios[0], ratios[ratios.length - 1]] : undefined,
+    medianTempC: temps.length ? (temps.length % 2 ? temps[(temps.length - 1) / 2] : (temps[temps.length / 2 - 1] + temps[temps.length / 2]) / 2) : undefined,
+    tempRange: temps.length ? [temps[0], temps[temps.length - 1]] : undefined,
+    grindSizes: sizes,
+    roastDate: bean.roastDate,
+  }
+}

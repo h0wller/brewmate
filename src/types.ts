@@ -21,8 +21,23 @@ export interface GrinderProfile {
   redClix?: boolean
 }
 
+export interface TrialMetadata {
+  sourceLogId: string
+  variable: 'grind' | 'dose'
+  baselineTaste: BrewTaste
+}
+
+export interface HistoricalReference {
+  sourceLogId: string
+  sourceRating: number
+}
+
 export interface Recipe {
+  reference?: HistoricalReference
+  trial?: TrialMetadata
   id: string; title: string; method: string;
+  beanId?: string
+  beanRoastDate?: string
   doseG: number; waterG: number; tempC: number; grind?: Grind;
   steps: BrewStep[]; favorite?: boolean; createdAt: number;
   updatedAt?: number; // время последней правки (для слияния при синхронизации)
@@ -34,6 +49,8 @@ export interface WeightSample { t: number; g: number }
 /* Запись в журнале завариваний. Рецепт и зерно скопированы «снимком»: рецепт
    можно потом изменить или удалить, а запись о том, что было сварено, остаётся. */
 export interface BrewLog {
+  reference?: HistoricalReference
+  trial?: TrialMetadata
   id: string
   recipeId?: string
   title: string
@@ -45,6 +62,7 @@ export interface BrewLog {
   steps: BrewStep[]       // план из рецепта (для сравнения «план / факт»)
   beanId?: string
   beanName?: string
+  beanRoastDate?: string
   startedAt: number
   durationS: number
   finalG?: number         // фактический вес в конце (с весов)
@@ -58,8 +76,8 @@ export interface BrewLog {
 
 /* Что таймер передаёт приложению при «Записать в журнал»; остальное (id, даты) добавляет App */
 export type LogDraft = Pick<BrewLog,
-  'recipeId' | 'title' | 'method' | 'doseG' | 'waterG' | 'tempC' | 'grind' | 'steps' |
-  'durationS' | 'finalG' | 'curve'>
+  'recipeId' | 'title' | 'method' | 'doseG' | 'waterG' | 'tempC' | 'grind' | 'steps' | 'beanId' | 'beanRoastDate' |
+  'durationS' | 'finalG' | 'curve' | 'trial' | 'reference'>
 
 export interface BeanProfile {
   id: string

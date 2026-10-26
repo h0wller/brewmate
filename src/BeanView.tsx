@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react'
-import type { BeanProfile, GrinderProfile, Recipe } from './types'
+import type { BeanProfile, BrewLog, GrinderProfile, Recipe } from './types'
 import {
   LEVEL_LABEL, METHODS, WATER_PROFILES, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from './beans/engine'
+import type { GrindSize } from './grinders/size'
 import { BREWING_PRINCIPLES, BREW_KNOWLEDGE } from './beans/knowledge'
+import { recipeFromBestHistoricalBrew, summarizeBeanHistory } from './beans/dialIn'
 import { AIError, loadAIConfig, recognizePackage } from './ai/client'
 import { prepareImage } from './ai/image'
 import { buildAIResult } from './ai/recipe'
@@ -15,12 +17,18 @@ import { findGrinder } from './grinders/catalog'
 import { NumField } from './NumField'
 import { inRange } from './numField'
 import { clickableProps } from './a11y'
+import { loadDialInProfiles, findDialInProfile } from './beans/dialInProfile'
+import { uid } from './storage'
 
 const DOSES = [15, 18, 30, 60]
+const PROCESS_LABEL: Record<string, string> = {
+  washed: 'Мытый', natural: 'Натуральный', honey: 'Хани', anaerobic: 'Анаэробная ферментация',
+}
 
-export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI }: {
+export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI }: {
   bean: BeanProfile
   profile: GrinderProfile
+  history: BrewLog[]
   onOpenGrinder: () => void
   onOpenGrindHelp: () => void
   onOpenAI: () => void
@@ -39,6 +47,7 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   const [errKind, setErrKind] = useState<AIError['kind'] | null>(null)
   /* результат AI показываем на этом экране и не уводим пользователя в редактор без спроса */
   const [aiResult, setAiResult] = useState<{ recipe: Recipe; bean: BeanProfile } | null>(null)
+  const [dialInProfiles] = useState(loadDialInProfiles)
   const fileRef = useRef<HTMLInputElement>(null)
   const pkgRef = useRef<HTMLInputElement>(null)
 
@@ -47,6 +56,18 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   const ready = method !== null && doseOk
   const rec = ready ? recommend(bean, method, water ?? 'balanced', dose) : null
   const mySetting = rec ? smartSettingFor(profile, rec.size, rec.coarseness) : undefined
+  const historicalRecipe = method !== null && doseOk && dose !== null
+    ? recipeFromBestHistoricalBrew(bean, method, dose, history, { grinderId: profile.grinder?.id, roastDate: bean.roastDate })
+    : undefined
+  const historyEvidence = method !== null
+    ? summarizeBeanHistory(bean, method, profile.grinder?.id, history)
+    : null
+  const savedDialIn = method !== null
+    ? findDialInProfile(dialInProfiles, profile.grinder?.id, method, { matchBean: true, beanId: bean.id, matchRoastDate: true, roastDate: bean.roastDate })
+    : undefined
+  const applicableDialIn = savedDialIn && savedDialIn.beanId === bean.id && savedDialIn.roastDate === bean.roastDate
+    ? savedDialIn
+    : undefined
   const grinderName = profile.grinder
     ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id)
     : null
@@ -98,7 +119,7 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
       <div className="row" style={{ flexWrap: 'wrap' }}><label>Обработка</label>
         {['washed', 'natural', 'honey', 'anaerobic'].map(p => (
           <button key={p} className={'chip' + (bean.process === p ? ' on' : '')}
-            onClick={() => set({ process: p })}>{p}</button>
+            onClick={() => set({ process: p })}>{PROCESS_LABEL[p] ?? p}</button>
         ))}
       </div>
 
@@ -201,7 +222,7 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
         <div className="card aiResult" style={{ display: 'block', cursor: 'default' }}>
           <div style={{ fontWeight: 600 }}>🤖 Пачка распознана</div>
           <div className="meta">
-            {[aiResult.bean.name, aiResult.bean.origin, aiResult.bean.process,
+            {[aiResult.bean.name, aiResult.bean.origin, aiResult.bean.process ? PROCESS_LABEL[aiResult.bean.process] ?? aiResult.bean.process : undefined,
               aiResult.bean.roastLevel && LEVEL_LABEL[aiResult.bean.roastLevel]].filter(Boolean).join(' · ') || 'данные с пачки не нашлись'}
             {' — записано в карточку зерна выше'}
           </div>
@@ -211,6 +232,9 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
             {aiResult.recipe.grind?.size ? ` · помол: ${SIZE_LABEL[aiResult.recipe.grind.size]}` : ''}
             {aiResult.recipe.grind?.setting ? ` (${aiResult.recipe.grind.setting})` : ''}
             {` · шагов: ${aiResult.recipe.steps.length}`}
+          </div>
+          <div className="small" style={{ marginTop: 8 }}>
+            Расчётные числа здесь берёт тот же локальный движок, что и в подсказке ниже: AI помогает распознать данные пачки, но не угадывает клики или параметры заваривания. Так сохраняется единая логика рекомендаций.
           </div>
           <button className="btn" onClick={() => onMakeRecipe(aiResult.recipe)}>Открыть рецепт →</button>
           <button className="btn secondary" onClick={() => setAiResult(null)}>Не нужен</button>
@@ -267,6 +291,84 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
           <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness), dose))}>
             Сделать рецепт → в таймер
           </button>
+          {savedDialIn && (
+            <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+              <b>Сохранённый профиль · {METHODS[method!].label}</b>
+              <div className="small">
+                {savedDialIn.positiveTrials}/{savedDialIn.totalTrials} положительных проб · зерно: {savedDialIn.beanName ?? savedDialIn.beanId ?? 'не указано'} · обжарка: {savedDialIn.roastDate ?? 'не указана'}.
+              </div>
+              <div>
+                {savedDialIn.doseG} г / {savedDialIn.waterG} г · {savedDialIn.tempC} °C
+                {savedDialIn.grindSize ? ` · ${SIZE_LABEL[savedDialIn.grindSize] ?? savedDialIn.grindSize}` : ''}
+                {savedDialIn.grinderSetting ? ` · ${savedDialIn.grinderSetting}` : ''}
+              </div>
+              {applicableDialIn ? (
+                <button className="btn" onClick={() => {
+                  const scale = doseOk && dose !== null ? dose / applicableDialIn.doseG : 1
+                  onMakeRecipe({
+                    id: uid(),
+                    title: `${bean.name || 'Зерно'} · личный подтверждённый профиль`,
+                    method: applicableDialIn.method,
+                    beanId: bean.id,
+                    beanRoastDate: bean.roastDate,
+                    doseG: doseOk && dose !== null ? dose : applicableDialIn.doseG,
+                    waterG: Math.round(applicableDialIn.waterG * scale),
+                    tempC: applicableDialIn.tempC,
+                    grind: profile.grinder ? {
+                      grinder: profile.grinder,
+                      size: applicableDialIn.grindSize as GrindSize | undefined,
+                      setting: applicableDialIn.grinderSetting,
+                    } : undefined,
+                    steps: applicableDialIn.steps.map(step => ({ ...step, pourTo: Math.round(step.pourTo * scale) })),
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  })
+                }}>Использовать этот профиль для рецепта</button>
+              ) : (
+                <div className="small">Профиль сохранён для другой партии или даты обжарки. Он не будет автоматически применён к этому зерну.</div>
+              )}
+              <div className="small">Профиль хранится отдельно от ручной калибровки и не переносит настройку на другие кофемолки.</div>
+            </div>
+          )}
+
+          {historyEvidence && historyEvidence.brews > 0 && (
+            <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+              <b>Данные твоих завариваний</b>
+              <div className="small">
+                Сопоставимых чашек: {historyEvidence.brews}
+                {historyEvidence.roastDate ? ` · обжарка ${historyEvidence.roastDate}` : ' · дата обжарки не указана'}.
+                Учитываются только то же зерно, метод, кофемолка и совпадающая дата обжарки.
+              </div>
+              <div>
+                {historyEvidence.meanRatio !== undefined ? `Среднее соотношение: 1:${historyEvidence.meanRatio}` : ''}
+                {historyEvidence.ratioRange ? ` (наблюдалось 1:${historyEvidence.ratioRange[0].toFixed(1)}–1:${historyEvidence.ratioRange[1].toFixed(1)})` : ''}
+                {historyEvidence.medianTempC !== undefined ? ` · медианная температура: ${historyEvidence.medianTempC} °C` : ''}
+                {historyEvidence.tempRange ? ` (диапазон ${historyEvidence.tempRange[0]}–${historyEvidence.tempRange[1]} °C)` : ''}
+              </div>
+              <div className="small">
+                <b>{historyEvidence.confidence === 'repeatable' ? 'Повторяющийся положительный сигнал' : historyEvidence.confidence === 'early-signal' ? 'Предварительный сигнал' : 'Пока нет надёжного сигнала'}</b>
+                {' · '}{historyEvidence.confidenceNote}
+              </div>
+              <div className="small">
+                {historyEvidence.ratedBrews
+                  ? `Средняя оценка: ${historyEvidence.meanRating}/5 по ${historyEvidence.ratedBrews} чашкам`
+                  : 'Оценки чашек пока не записаны'}
+                {` · отмечен баланс: ${historyEvidence.balancedBrews}`}
+              </div>
+              {historyEvidence.grindSizes.length > 0 && (
+                <div className="small">Уровни помола в истории: {historyEvidence.grindSizes.map(size => SIZE_LABEL[size as keyof typeof SIZE_LABEL] ?? size).join(', ')}. Это записи шкалы крупности, а не конвертация кликов между кофемолками.</div>
+              )}
+            </div>
+          )}
+
+          {historicalRecipe && (
+            <div className="tip" style={{ marginTop: 10 }}>
+              <b>Есть удачная чашка из истории</b>
+              <div>Для этого зерна и метода есть запись с оценкой не ниже 4/5 и отмеченным балансом. Можно использовать её как альтернативную стартовую точку.</div>
+              <div className="small">Сохраняются температура и настройка помола из той чашки; доза и вода масштабируются пропорционально. Проверь, что помол по-прежнему подходит текущей партии.</div>
+              <button className="btn secondary" onClick={() => onMakeRecipe(historicalRecipe)}>Использовать исторический рецепт</button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="small">Выбери метод и дозу — покажу помол, температуру и воду.</div>
