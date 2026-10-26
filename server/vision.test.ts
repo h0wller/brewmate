@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, PROVIDER_REGISTRY, runVision, validProviderBaseUrl, validateRequest,
+  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, PROVIDER_REGISTRY, retryAfterSeconds, runVision, validProviderBaseUrl, validateRequest,
 } from './vision'
 import type { Deps, Env, Provider } from './vision'
 
@@ -203,6 +203,17 @@ describe('runVision: перебор провайдеров', () => {
     const h = newHealth()
     await runVision(f, ps, req, h, T)
     expect(h.until.get('gemini')).toBe(T + 300_000)
+  })
+  it('Retry-After поддерживает дату HTTP, а не только число секунд', async () => {
+    const header = new Date(T + 120_000).toUTCString()
+    expect(retryAfterSeconds(header, T)).toBe(120)
+    expect(retryAfterSeconds('120', T)).toBe(120)
+    expect(retryAfterSeconds('not-a-date', T)).toBeUndefined()
+
+    const { f } = fakeFetch({ 'gem.test': [fail(429, { 'retry-after': header })], 'groq.test': [ok()] })
+    const h = newHealth()
+    await runVision(f, ps, req, h, T)
+    expect(h.until.get('gemini')).toBe(T + 120_000)
   })
   it('ключ не принят (401/403) — это не «лимит»: долгая пауза и переход к следующему', async () => {
     const { f } = fakeFetch({ 'gem.test': [fail(403)], 'groq.test': [ok()] })
