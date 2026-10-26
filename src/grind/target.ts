@@ -16,9 +16,13 @@ export const TARGET_UM: Record<GrindSize, [number, number]> = {
 
 /* Проверенные физические фракции для калибровки по лабораторным ситам. */
 export const SIEVE_REFERENCES = {
-  '600-900': { minUm: 600, maxUm: 900, d50Um: Math.round(Math.sqrt(600 * 900)) },
-  '900-1400': { minUm: 900, maxUm: 1400, d50Um: Math.round(Math.sqrt(900 * 1400)) },
+  'under-600': { label: '< 600 мкм (проход 600)', minUm: 250, maxUm: 600, d50Um: 450 },
+  '600-900': { label: '600–900 мкм (между 600 и 900)', minUm: 600, maxUm: 900, d50Um: 735 },
+  '900-1400': { label: '900–1400 мкм (между 900 и 1400)', minUm: 900, maxUm: 1400, d50Um: 1122 },
+  'over-1400': { label: '> 1400 мкм (остаток на 1400)', minUm: 1400, maxUm: 2000, d50Um: 1620 },
 } as const
+
+export type SieveBracket = keyof typeof SIEVE_REFERENCES
 
 /* Середина диапазона в логарифмическом масштабе: размеры растут «в разы», а не «на сколько-то» */
 export const midUm = (size: GrindSize): number => {
