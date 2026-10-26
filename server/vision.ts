@@ -510,10 +510,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (!v.ok) return json(v.message.includes('большая') ? 413 : 400, { error: 'bad_request', message: v.message })
 
   if (!providers.length) return json(503, { error: 'not_configured' })
-  const selectedProviders = v.value.task === 'package' && v.value.providerId
-    ? providers.filter(p => p.id === v.value.providerId)
-    : providers
-  if (!selectedProviders.length) return json(400, { error: 'provider_unavailable', providerId: v.value.task === 'package' ? v.value.providerId : undefined })
+  const selectedProviderId = v.value.task === 'package' ? v.value.providerId : undefined
+  const selectedProviders = selectedProviderId ? providers.filter(p => p.id === selectedProviderId) : providers
+  if (!selectedProviders.length) return json(400, { error: 'provider_unavailable', providerId: selectedProviderId })
 
   const now = deps.now()
   let lim: LimitResult
