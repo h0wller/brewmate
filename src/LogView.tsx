@@ -7,7 +7,7 @@ import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
-import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, planNextExperiment } from './beans/dialIn'
+import { assessTrialOutcome, assessTrialRepeatability, assessTrialEvidenceConfidence, diagnoseNextCup, findBestComparableBrew, planNextExperiment } from './beans/dialIn'
 import { useState } from 'react'
 
 export function LogView({ log, sourceLog, history, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
@@ -34,6 +34,9 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
   const repeatabilitySource = log.trial && sourceLog ? sourceLog : log
   const repeatability = assessTrialRepeatability(repeatabilitySource, history)
   const profileAssessment = assessTrialRepeatability(repeatabilitySource, history, log.trial ? log : undefined)
+  const evidenceConfidence = log.trial && sourceLog
+    ? assessTrialEvidenceConfidence(sourceLog, history, log)
+    : undefined
   const candidateProfile = profileFromConfirmedLog(log, profileAssessment)
   const [profiles, setProfiles] = useState(loadDialInProfiles)
   const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method, log.beanId, log.beanRoastDate)
@@ -178,6 +181,16 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
               {' → '}
               Сейчас: {log.taste ? TASTE_LABEL[log.taste] : 'отметь вкус ниже'}
               {log.rating !== undefined ? ` · оценка ${log.rating}/5` : ''}
+            </div>
+          )}
+          {evidenceConfidence && (
+            <div className="small" style={{ marginTop: 8 }}>
+              <b>Уровень доказательности: {evidenceConfidence.status === 'repeatable' ? 'повторяемый сигнал' : evidenceConfidence.status === 'preliminary' ? 'предварительный сигнал' : 'гипотеза'}</b>
+              <div>{evidenceConfidence.ratedTrials} чашек с оценкой и отметкой вкуса · баланс: {evidenceConfidence.balancedTrials}
+                {evidenceConfidence.meanRating !== undefined ? ` · средняя оценка ${evidenceConfidence.meanRating}/5` : ''}
+                {evidenceConfidence.ratingRange ? ` · диапазон ${evidenceConfidence.ratingRange[0]}–${evidenceConfidence.ratingRange[1]}/5` : ''}.
+              </div>
+              <div>{evidenceConfidence.summary}</div>
             </div>
           )}
           {trialAssessment && (
