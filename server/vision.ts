@@ -104,7 +104,7 @@ export function validateRequest(
     bean = {
       ...(p.process === 'washed' || p.process === 'natural' || p.process === 'honey' || p.process === 'anaerobic' ? { process: p.process } : {}),
       ...(p.roastLevel === 'light' || p.roastLevel === 'medium' || p.roastLevel === 'dark' ? { roastLevel: p.roastLevel } : {}),
-      ...(typeof p.roastDate === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(p.roastDate) ? { roastDate: p.roastDate } : {}),
+      ...(typeof p.roastDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.roastDate) ? { roastDate: p.roastDate } : {}),
     }
     if (!Object.keys(bean).length) bean = undefined
   }
