@@ -136,13 +136,16 @@ describe('recipeFromBean', () => {
     }
   })
 
-  it('Moccamaster использует цикл машины, а не ручные вливания', () => {
+  it('Moccamaster: промывка фильтра, предсмачивание и машинный цикл без двойного учёта воды', () => {
     const rec = recommend(bean(), 'moccamaster')
     const r = recipeFromBean(bean(), 'moccamaster', rec, { size: rec.size }, 15)
-    expect(r.steps).toHaveLength(2)
+    expect(r.steps).toHaveLength(3)
     expect(r.steps[0].pourTo).toBe(0)
-    expect(r.steps[1].pourTo).toBe(r.waterG)
-    expect(r.steps[1].note).toContain('Moccamaster')
+    expect(r.steps[1].pourTo).toBe(38)
+    expect(r.steps[1].note).toContain('Предсмачивание')
+    expect(r.steps[2].pourTo).toBe(r.waterG)
+    expect(r.steps[2].note).toContain('Moccamaster')
+    expect(r.steps[2].note).toContain('202')
   })
 
   it('каппинг: настаивание 4 минуты, а не блюм в 0 секунд', () => {
