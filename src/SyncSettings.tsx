@@ -53,7 +53,8 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
         ? sanitizeDialInProfiles((raw as Record<string, unknown>).dialInProfiles)
         : []
       if (!incoming.recipes.length && !incoming.sessions.length && !incoming.beans.length
-        && !incoming.logs.length && !incoming.grindChecks.length && !restored && !rawProfiles.length) {
+        && !incoming.logs.length && !incoming.grindChecks.length && !incoming.dialInProfiles.length
+        && !incoming.photoProfiles.length && !restored && !rawProfiles.length) {
         throw new Error('в файле нет данных BrewMate')
       }
       onMerged(mergeData(local, incoming))
@@ -62,7 +63,8 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
       setMsg(
         `✅ Импортировано: рецептов ${incoming.recipes.length}, зерна ${incoming.beans.length}, ` +
         `каппингов ${incoming.sessions.length}, завариваний ${incoming.logs.length}, ` +
-        `замеров помола ${incoming.grindChecks.length}, профилей настройки ${rawProfiles.length}${restored ? ', кофемолка восстановлена' : ''} (слито с текущими данными)`,
+        `замеров помола ${incoming.grindChecks.length}, dial-in-профилей ${incoming.dialInProfiles.length}, ` +
+        `фото-профилей ${incoming.photoProfiles.length}, профилей настройки ${rawProfiles.length}${restored ? ', кофемолка восстановлена' : ''} (слито с текущими данными)`,
       )
     } catch (e) { setMsg('❌ Импорт: ' + (e as Error).message) }
   }
