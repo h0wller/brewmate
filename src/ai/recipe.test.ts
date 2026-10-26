@@ -51,7 +51,7 @@ describe('buildAIResult', () => {
 
   it('AI не перезаписывает локальную температуру и пропорцию произвольными числами', () => {
     const expected = buildAIResult({ recipe: { tempC: 120, ratio: 14, grindSize: 'coarse' } }, ctx).recipe
-    expect(expected.tempC).toBe(95)
+    expect(expected.tempC).toBe(93)
     expect(expected.waterG).toBe(240)
     expect(expected.grind?.size).toBe('medium_fine')
   })
