@@ -24,7 +24,7 @@ describe('резервная копия', () => {
     expect(backupFileName(b.exportedAt)).toBe('brewmate-2026-10-26.json')
   })
   it('копия переживает JSON и читается обратно без потерь', () => {
-    const b = JSON.parse(JSON.stringify(makeBackup(emptyData(), mine)))
+    const b = JSON.parse(JSON.stringify(makeBackup(emptyData(), mine, undefined, [dialInProfile()])))
     expect(sanitizeData(b).grindChecks).toEqual([])
     expect(profileToRestore(b, emptyProfile())).toEqual(mine)
     expect(dialInProfilesToRestore(b, []).map(p => p.id)).toEqual([dialInProfile().id])
