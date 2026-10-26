@@ -62,3 +62,14 @@
   .benchRecordHeader { flex-direction: column; }
   .benchRecordFields { grid-template-columns: minmax(0, 1fr); }
 }
+
+.benchResults { margin-top: 12px; padding: 11px; border-radius: 10px; background: #29292f; }
+.benchRunnerHead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.benchRunnerHead span, .benchRun > div span { color: #98989f; font-size: 12px; overflow-wrap: anywhere; }
+.benchRunList { display: grid; gap: 8px; margin-top: 10px; }
+.benchRun { display: grid; gap: 5px; border-top: 1px solid #3a3a42; padding-top: 9px; font-size: 12px; overflow-wrap: anywhere; }
+.benchRun > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.benchRunError { color: #ffb4ae; font-size: 12px; }
+.benchScore { color: #a8f0c8; font-weight: 600; }
+.benchRunnerMessage { margin: 8px 0 0; color: #a8f0c8; font-size: 12px; }
+.benchResults .benchTip { margin: 10px 0 0; }
