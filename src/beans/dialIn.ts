@@ -173,3 +173,47 @@ export function findBestComparableBrew(current: BrewLog, history: BrewLog[]): Br
     })
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || b.startedAt - a.startedAt)[0]
 }
+
+
+/**
+ * Build an explicitly user-selected recipe from the best logged balanced cup
+ * for the same bean name and method. Historical values are preserved proportionally;
+ * this is a starting point, not an automatic override of the local recommendation.
+ */
+export function recipeFromBestHistoricalBrew(
+  bean: { id: string; name: string },
+  method: string,
+  doseG: number,
+  history: BrewLog[],
+): Recipe | undefined {
+  const name = bean.name.trim().toLocaleLowerCase()
+  if (!name || !Number.isFinite(doseG) || doseG <= 0) return undefined
+  const reference = history
+    .filter(log =>
+      log.method === method &&
+      log.rating !== undefined && log.rating >= 4 &&
+      log.taste === 'balanced' &&
+      (log.beanId === bean.id || (!log.beanId && log.beanName?.trim().toLocaleLowerCase() === name)),
+    )
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || b.startedAt - a.startedAt)[0]
+  if (!reference) return undefined
+
+  const scale = doseG / reference.doseG
+  const waterG = Math.round(reference.waterG * scale)
+  const now = Date.now()
+  return {
+    id: uid(),
+    title: `${bean.name} · проверенный ориентир · ${reference.rating}/5`,
+    method: reference.method,
+    doseG,
+    waterG,
+    tempC: reference.tempC,
+    grind: reference.grind ? { ...reference.grind } : undefined,
+    steps: reference.steps.map(step => ({
+      ...step,
+      pourTo: Math.round(step.pourTo * scale),
+    })),
+    createdAt: now,
+    updatedAt: now,
+  }
+}
