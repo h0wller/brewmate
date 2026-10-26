@@ -6,7 +6,7 @@
    Весь ввод-вывод передаётся снаружи (fetch, хранилище счётчиков, часы), поэтому логика проверяется тестами. */
 
 import { buildGrindPrompt, buildPackagePrompt, isGrindTaste, isPromptWater } from '../src/ai/prompt.js'
-import type { GrindFacts, PromptWater } from '../src/ai/prompt.js'
+import type { GrindFacts, PromptBeanContext, PromptWater } from '../src/ai/prompt.js'
 import { isGrindSize } from '../src/grinders/size.js'
 
 export type Env = Record<string, string | undefined>
@@ -48,13 +48,13 @@ export function loadLimits(env: Env): Limits {
 /* ---------- проверка запроса ---------- */
 
 export type VisionRequest =
-  | { task: 'package'; methodLabel: string; image: string; water?: PromptWater; doseG?: number }
+  | { task: 'package'; methodLabel: string; image: string; water?: PromptWater; doseG?: number; bean?: PromptBeanContext }
   | { task: 'grind'; image: string; grind: GrindFacts }
 
 const promptFor = (req: VisionRequest): string =>
   req.task === 'grind'
     ? buildGrindPrompt(req.grind)
-    : buildPackagePrompt(req.methodLabel, { water: req.water, doseG: req.doseG })
+    : buildPackagePrompt(req.methodLabel, { water: req.water, doseG: req.doseG, bean: req.bean })
 
 const inRange = (v: unknown, lo: number, hi: number): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi
@@ -98,12 +98,23 @@ export function validateRequest(
   if (b.doseG !== undefined && !(typeof b.doseG === 'number' && b.doseG >= 3 && b.doseG <= 500)) {
     return { ok: false, message: 'некорректная доза' }
   }
+  let bean: PromptBeanContext | undefined
+  if (b.bean && typeof b.bean === 'object' && !Array.isArray(b.bean)) {
+    const p = b.bean as Record<string, unknown>
+    bean = {
+      ...(p.process === 'washed' || p.process === 'natural' || p.process === 'honey' || p.process === 'anaerobic' ? { process: p.process } : {}),
+      ...(p.roastLevel === 'light' || p.roastLevel === 'medium' || p.roastLevel === 'dark' ? { roastLevel: p.roastLevel } : {}),
+      ...(typeof p.roastDate === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(p.roastDate) ? { roastDate: p.roastDate } : {}),
+    }
+    if (!Object.keys(bean).length) bean = undefined
+  }
   return {
     ok: true,
     value: {
       task: 'package', methodLabel: b.methodLabel, image: b.image,
       ...(b.water !== undefined ? { water: b.water } : {}),
       ...(b.doseG !== undefined ? { doseG: b.doseG } : {}),
+      ...(bean ? { bean } : {}),
     },
   }
 }
