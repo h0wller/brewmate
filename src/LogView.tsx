@@ -27,7 +27,7 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
   const trial = makeTrialRecipe(log)
   const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
   const referenceAssessment = log.reference ? assessTrialOutcome(sourceLog, log) : undefined
-  const comparable = findBestComparableBrew(log, history)
+  const comparable = findBestComparableBrew(log, history, { grinderId: log.grind?.grinder?.id, roastDate: log.beanRoastDate })
   const repeatability = assessTrialRepeatability(log, history)
   const relatedTrials = history.filter(item => item.trial?.sourceLogId === log.id && item.method === log.method)
 
