@@ -56,13 +56,15 @@ describe('buildAIResult', () => {
     expect(expected.grind?.size).toBe('medium_fine')
   })
 
-  it('Moccamaster сохраняет машинный цикл и базовые параметры в AI-сценарии', () => {
+  it('Moccamaster: AI и локальный режим дают одинаковый расчёт и предсмачивание', () => {
     const { recipe } = buildAIResult(OUT, { ...ctx, method: 'moccamaster' })
     expect(recipe.method).toBe('moccamaster')
-    expect(recipe.tempC).toBe(96)
+    expect(recipe.tempC).toBe(94)
     expect(recipe.waterG).toBe(240)
-    expect(recipe.steps).toHaveLength(2)
-    expect(recipe.steps[1].note).toContain('Moccamaster')
+    expect(recipe.steps).toHaveLength(3)
+    expect(recipe.steps[1].pourTo).toBe(38)
+    expect(recipe.steps[1].note).toContain('Предсмачивание')
+    expect(recipe.steps[2].note).toContain('Moccamaster')
   })
 })
 
