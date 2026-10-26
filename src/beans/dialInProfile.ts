@@ -103,5 +103,12 @@ export function findDialInProfile(
   roastDate?: string,
 ): DialInProfile | undefined {
   if (!grinderId) return undefined
-  return list.find(p => p.grinderId === grinderId && p.method === method && p.beanId === beanId && p.roastDate === roastDate)
+  const filterBean = arguments.length >= 4
+  const filterRoast = arguments.length >= 5
+  return list.find(p =>
+    p.grinderId === grinderId &&
+    p.method === method &&
+    (!filterBean || p.beanId === beanId) &&
+    (!filterRoast || p.roastDate === roastDate),
+  )
 }
