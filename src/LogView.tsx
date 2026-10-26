@@ -1,14 +1,20 @@
-import type { BeanProfile, BrewLog } from './types'
+import type { BeanProfile, BrewLog, Recipe } from './types'
+import { loadDialInProfiles, saveDialInProfile, profileFromConfirmedLog, findDialInProfile } from './beans/dialInProfile'
 import type { GrindCheck } from './grind/store'
 import { BREW_TASTES, TASTE_LABEL } from './brewlog/taste'
 import { CurveChart } from './CurveChart'
 import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
+import { SIZE_LABEL } from './grinders/size'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
+import { assessTrialOutcome, assessTrialRepeatability, assessTrialEvidenceConfidence, diagnoseNextCup, findBestComparableBrew, planNextExperiment } from './beans/dialIn'
+import { useState } from 'react'
 
-export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete }: {
+export function LogView({ log, sourceLog, history, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
   log: BrewLog
+  sourceLog?: BrewLog
+  history: BrewLog[]
   beans: BeanProfile[]
   canRepeat: boolean         // исходный рецепт ещё существует
   check?: GrindCheck         // последний замер помола, привязанный к этой записи
@@ -17,8 +23,25 @@ export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepe
   onRepeat: () => void
   onCheckGrind: () => void
   onDelete: (id: string) => void
+  onMakeTrial: (recipe: Recipe) => void
 }) {
   const set = (p: Partial<BrewLog>) => onChange({ ...log, ...p })
+  const dialIn = diagnoseNextCup(log)
+  const nextExperiment = planNextExperiment(log, history)
+  const trial = nextExperiment.recipe
+  const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
+  const referenceAssessment = log.reference ? assessTrialOutcome(sourceLog, log) : undefined
+  const comparable = findBestComparableBrew(log, history, { grinderId: log.grind?.grinder?.id, roastDate: log.beanRoastDate })
+  const repeatabilitySource = log.trial && sourceLog ? sourceLog : log
+  const repeatability = assessTrialRepeatability(repeatabilitySource, history)
+  const profileAssessment = assessTrialRepeatability(repeatabilitySource, history, log.trial ? log : undefined)
+  const evidenceConfidence = log.trial && sourceLog
+    ? assessTrialEvidenceConfidence(sourceLog, history, log)
+    : undefined
+  const candidateProfile = profileFromConfirmedLog(log, profileAssessment)
+  const [profiles, setProfiles] = useState(loadDialInProfiles)
+  const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method, { matchBean: true, beanId: log.beanId, matchRoastDate: true, roastDate: log.beanRoastDate })
+  const relatedTrials = history.filter(item => item.trial?.sourceLogId === log.id && item.method === log.method)
 
   const pickBean = (id: string) => {
     const b = beans.find(x => x.id === id)
@@ -46,6 +69,35 @@ export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepe
         {log.doseG} г кофе{log.grind ? ` · ${formatGrind(log.grind, { withGrinder: true })}` : ''}
       </div>
 
+      {!log.trial && !log.reference && relatedTrials.length > 0 && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Повторяемость настройки</b>
+          <div className="small">
+            {repeatability.trials} проб с сенсорными отметками · положительных {repeatability.positive} · ухудшений {repeatability.worse} · без ясного сигнала {repeatability.unchanged}.
+          </div>
+          <div><b>{repeatability.status === 'confirmed' ? 'Воспроизводимый результат' : repeatability.status === 'promising' ? 'Перспективный, но не окончательный' : repeatability.status === 'inconsistent' ? 'Результат пока нестабилен' : 'Недостаточно проб'}</b></div>
+          <div>{repeatability.summary}</div>
+        </div>
+      )}
+
+      {comparable && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Удачная чашка для этого зерна и метода</b>
+          <div className="small">
+            Исторический ориентир: {fmtDate(comparable.startedAt)} · оценка {comparable.rating}/5 · отмечен баланс.
+          </div>
+          <div>
+            {comparable.doseG} г кофе / {comparable.waterG} г воды · {comparable.tempC} °C
+            {comparable.grind ? ` · ${formatGrind(comparable.grind, { withGrinder: true })}` : ''}
+          </div>
+          <div className="small">
+            Время {fmt(comparable.durationS)}
+            {comparable.finalG !== undefined ? ` · выход ${comparable.finalG.toFixed(1)} г` : ''}.
+            Это прошлый удачный результат, а не гарантия для другой партии или степени свежести.
+          </div>
+        </div>
+      )}
+
       {log.curve && log.curve.length > 1
         ? <CurveChart curve={log.curve} steps={log.steps} durationS={log.durationS} />
         : <div className="small">Кривой нет: весы не были подключены.</div>}
@@ -71,6 +123,88 @@ export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepe
         </>
       )}
 
+      {log.reference && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Рецепт на основе исторической чашки</b>
+          <div className="small">
+            Исходная чашка: {sourceLog?.title ?? 'запись недоступна'} · оценка при выборе: {log.reference.sourceRating}/5.
+          </div>
+          {sourceLog && (
+            <div>
+              Ориентир: {sourceLog.doseG} г / {sourceLog.waterG} г · {sourceLog.tempC} °C
+              {' → '}
+              Сейчас: {log.doseG} г / {log.waterG} г · {log.tempC} °C
+            </div>
+          )}
+          {referenceAssessment && (
+            <div style={{ marginTop: 8 }}>
+              <b>{referenceAssessment.verdict === 'promising' ? 'Положительный сигнал' : referenceAssessment.verdict === 'worse' ? 'Возможное ухудшение' : referenceAssessment.verdict === 'mixed' ? 'Нет заметного изменения' : 'Пока недостаточно данных'}</b>
+              <div>{referenceAssessment.summary}</div>
+              {referenceAssessment.evidence.map((item, i) => <div className="small" key={i}>• {item}</div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {candidateProfile && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Повторяемая настройка подтверждена для этой пробы</b>
+          <div className="small">
+            Подтверждение основано на {candidateProfile.positiveTrials} положительных пробах из {candidateProfile.totalTrials}.
+            Профиль сохраняется отдельно от ручной калибровки и привязан к зерну «{candidateProfile.beanName ?? candidateProfile.beanId}» и дате обжарки {candidateProfile.roastDate}.
+          </div>
+          <div>
+            {candidateProfile.doseG} г кофе / {candidateProfile.waterG} г воды · {candidateProfile.tempC} °C
+            {candidateProfile.grindSize ? ` · ${SIZE_LABEL[candidateProfile.grindSize]}` : ''}
+            {candidateProfile.grinderSetting ? ` · ${candidateProfile.grinderSetting}` : ''}
+          </div>
+          <button className="btn" onClick={() => {
+            saveDialInProfile(candidateProfile)
+            setProfiles(loadDialInProfiles())
+          }}>
+            {savedProfile?.sourceLogId === log.id ? 'Обновить сохранённый профиль' : 'Сохранить как профиль кофемолка × метод'}
+          </button>
+          <div className="small">Это подтверждённый снимок конкретной чашки, а не универсальный рецепт для любого зерна. Он не изменяет ручную калибровку кофемолки и не применяется автоматически к другим партиям.</div>
+        </div>
+      )}
+
+      {log.trial && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Контролируемая проба</b>
+          <div className="small">
+            Проверяемый параметр: {log.trial.variable === 'dose' ? 'доза кофе' : 'крупность помола'}.
+            Исходная чашка: {sourceLog?.title ?? 'запись недоступна'}.
+          </div>
+          {sourceLog && (
+            <div>
+              Было: {sourceLog.taste ? TASTE_LABEL[sourceLog.taste] : 'вкус не отмечен'}
+              {sourceLog.rating !== undefined ? ` · оценка ${sourceLog.rating}/5` : ''}
+              {' → '}
+              Сейчас: {log.taste ? TASTE_LABEL[log.taste] : 'отметь вкус ниже'}
+              {log.rating !== undefined ? ` · оценка ${log.rating}/5` : ''}
+            </div>
+          )}
+          {evidenceConfidence && (
+            <div className="small" style={{ marginTop: 8 }}>
+              <b>Уровень доказательности: {evidenceConfidence.status === 'repeatable' ? 'повторяемый сигнал' : evidenceConfidence.status === 'preliminary' ? 'предварительный сигнал' : 'гипотеза'}</b>
+              <div>{evidenceConfidence.ratedTrials} чашек с оценкой и отметкой вкуса · баланс: {evidenceConfidence.balancedTrials}
+                {evidenceConfidence.meanRating !== undefined ? ` · средняя оценка ${evidenceConfidence.meanRating}/5` : ''}
+                {evidenceConfidence.ratingRange ? ` · диапазон ${evidenceConfidence.ratingRange[0]}–${evidenceConfidence.ratingRange[1]}/5` : ''}.
+              </div>
+              <div>{evidenceConfidence.summary}</div>
+            </div>
+          )}
+          {trialAssessment && (
+            <div style={{ marginTop: 8 }}>
+              <b>{trialAssessment.verdict === 'promising' ? 'Положительный сигнал' : trialAssessment.verdict === 'worse' ? 'Возможное ухудшение' : trialAssessment.verdict === 'mixed' ? 'Нет заметного изменения' : 'Пока недостаточно данных'}</b>
+              <div>{trialAssessment.summary}</div>
+              {trialAssessment.evidence.map((item, i) => <div className="small" key={i}>• {item}</div>)}
+            </div>
+          )}
+          <div className="small">Время и выход фиксируются как контекст, а не как оценка вкуса. Повтори удачную пробу, прежде чем считать настройку устойчивой.</div>
+        </div>
+      )}
+
       <div className="small">Оценка</div>
       <div className="lotChips">
         {[1, 2, 3, 4, 5].map(n => (
@@ -91,6 +225,20 @@ export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepe
           </button>
         ))}
       </div>
+
+      {log.taste && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <div><b>Следующий шаг: {nextExperiment.title}</b></div>
+          <div className="small">{nextExperiment.reason}</div>
+          <div className="small">Сенсорная гипотеза: {dialIn.reason}</div>
+          <div>{dialIn.action}</div>
+          <div className="small">
+            Методика: <a href={dialIn.sourceUrl} target="_blank" rel="noreferrer">Barista Hustle — Coffee Compass</a>.
+            Это проверяемая гипотеза, не диагноз: вкус зависит также от зерна, обжарки, воды и равномерности экстракции.
+          </div>
+          {trial && <button className="btn" onClick={() => onMakeTrial(trial)}>{nextExperiment.kind === 'repeat' ? 'Создать рецепт для повторной проверки' : 'Создать отдельный пробный рецепт'}</button>}
+        </div>
+      )}
 
       <div className="small">Зерно</div>
       <select className="select" value={log.beanId ?? ''} onChange={e => pickBean(e.target.value)}>
