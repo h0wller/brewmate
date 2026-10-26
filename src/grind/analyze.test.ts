@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { equivDiameterUm, otsu, scaleFromPoints, segment, summarize, toGray } from './analyze'
+import { MAX_SINGLE_UM, detectCoinCircle, equivDiameterUm, otsu, particleAreaLimits, scaleFromPoints, segment, summarize, toGray } from './analyze'
 import type { Img } from './analyze'
 
 interface Disc { x: number; y: number; r: number }
@@ -119,5 +119,74 @@ describe('предупреждения о качестве', () => {
   })
   it('пустой кадр — нет результата', () => {
     expect(summarize(segment(makeImage(100, 100, [])), PX_PER_MM)).toBeNull()
+  })
+})
+
+/* Боевой путь экрана: segment с maxArea (лист-ROI, локальный порог, фильтры формы) + summarize.
+   Замер не должен зависеть от ожиданий: на «лабораторном» кадре он совпадает с простым путём. */
+describe('боевой путь с границами одиночной крупинки', () => {
+  const run = (img: Img) => {
+    const lim = particleAreaLimits(PX_PER_MM)
+    return { seg: segment(img, lim), stats: summarize(segment(img, lim), PX_PER_MM) }
+  }
+
+  it('границы площади: 95 мкм — шум, 2,5 мм — предел одиночной крупинки', () => {
+    const hi = particleAreaLimits(60)                      // 60 px/мм: 95 мкм ≈ 5,7 px
+    expect(Math.abs(hi.minArea - Math.PI * (0.095 * 60 / 2) ** 2)).toBeLessThan(1)
+    expect(Math.abs(hi.maxArea - Math.PI * (MAX_SINGLE_UM / 1000 * 60 / 2) ** 2)).toBeLessThan(2)
+    expect(particleAreaLimits(5).minArea).toBe(4)          // у далёкого снимка нижняя граница не падает ниже 4 px²
+  })
+
+  for (const um of [400, 600, 900, 1200, 1600]) it(`размер ${um} мкм измеряется так же, как простым путём (±5 %)`, () => {
+    const r = um / 1000 * PX_PER_MM / 2
+    const cell = Math.ceil(r * 2) + 14
+    const n = Math.floor(900 / cell)
+    const discs: Disc[] = []
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) discs.push({ x: 40 + a * cell + cell / 2, y: 40 + b * cell + cell / 2, r })
+    const img = makeImage(1000, 1000, discs)
+    const simple = summarize(segment(img), PX_PER_MM)!
+    const { stats } = run(img)
+    expect(stats).not.toBeNull()
+    expect(Math.abs(stats!.d50 - simple.d50) / simple.d50).toBeLessThan(0.05)
+    expect(Math.abs(stats!.d50 - um) / um).toBeLessThan(0.08)
+  })
+
+  it('слипшийся комок не считается частицей и даёт предупреждение, остальной замер не искажается', () => {
+    const small = grid(15, 15, 40, () => 6).filter(d => d.y > 150)
+    const blob: Disc = { x: 300, y: 100, r: 50 }              // диаметр 5 мм — комок
+    const { seg, stats } = run(makeImage(SIZE, SIZE, [...small, blob]))
+    expect(seg.dropped.clumps).toBeGreaterThan(0)
+    expect(seg.clumps.length).toBeGreaterThan(0)
+    expect(stats!.flags).toContain('clumps')
+    expect(Math.abs(stats!.d50 - 600) / 600).toBeLessThan(0.08)
+  })
+
+  it('вытянутая «соринка» (волос, волокно) не считается частицей', () => {
+    const img = makeImage(SIZE, SIZE, grid(15, 15, 40, () => 6))
+    const px = img.data as Uint8ClampedArray
+    for (let x = 100; x < 160; x++) for (let y = 20; y < 24; y++) {   // 60×4 px
+      const k = (y * SIZE + x) * 4
+      px[k] = px[k + 1] = px[k + 2] = 40
+    }
+    const { seg } = run(img)
+    expect(seg.dropped.shape).toBeGreaterThan(0)
+  })
+})
+
+describe('автопоиск монеты', () => {
+  it('находит серый круг на белой бумаге (центр ±20 px, радиус ±25 %)', () => {
+    const W = 800, H = 600
+    const coin: Disc = { x: 406, y: 140, r: 96 }
+    const img = makeImage(W, H, [coin], 240, 150)
+    const c = detectCoinCircle(img)
+    expect(Math.hypot(c.cx - coin.x, c.cy - coin.y)).toBeLessThan(20)
+    expect(c.r).toBeGreaterThan(coin.r * 0.75)
+    expect(c.r).toBeLessThan(coin.r * 1.25)
+  })
+  it('на пустой бумаге возвращает запасное кольцо в пределах кадра', () => {
+    const c = detectCoinCircle(makeImage(800, 600, [], 240, 150))
+    expect(c.cx).toBeGreaterThan(0); expect(c.cx).toBeLessThan(800)
+    expect(c.cy).toBeGreaterThan(0); expect(c.cy).toBeLessThan(600)
+    expect(c.r).toBeGreaterThan(0)
   })
 })

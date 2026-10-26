@@ -1,8 +1,15 @@
-/* Измерение помола по фото:
-   1. Локализация области листа бумаги (ROI) с отсечением фона/стола за краями листа.
-   2. Локальная адаптивная бинаризация (Integral Image) для устойчивости к градиентам освещения.
-   3. Гранулометрический фильтр формы по стандарту ISO 9276-6 (Circularity 4πA/P²) для разделения одиночных зёрен и агломератов.
-   4. Поправка на проекцию (Sieve-equivalent diameter): учёт малой оси частицы для сходимости с ситовым анализом (600/900/1400 мкм). */
+/* Измерение помола по фото: чистые функции над пикселями (без DOM), поэтому проверяются тестами.
+   Фото — тёмные частицы на светлом фоне (белая бумага). Масштаб даёт монета известного диаметра.
+   Что делает код:
+   1. при заданном maxArea: находит светлый лист (ROI), бинаризует локальным порогом (интегральное изображение)
+      вместе с глобальным (Оцу), иначе — только глобальный порог Оцу;
+   2. связные компоненты → площадь, периметр, круглость, габариты;
+   3. слишком крупные, вытянутые, пустотелые или слишком синие компоненты не считаются частицами
+      (комки идут в `clumps` и рисуются на снимке, не входят в статистику);
+   4. диаметр = круг той же площади; D10/D50/D90 — по объёму (d³).
+   Пороги формы и цвета — эвристики, не откалиброваны по ситовому анализу или лазерному анализатору.
+   Это оценка для сравнений «до/после» на одной кофемолке, а не лабораторное измерение.
+   Результат НЕ зависит от ожидаемой настройки кофемолки: замер всегда сырой. */
 
 export interface Img { data: ArrayLike<number>; width: number; height: number } // RGBA, как ImageData
 
@@ -281,6 +288,15 @@ export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
       const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h))
       const boxFill = area / (w * h)
       const isCold = sumB > sumR + area * 8
+      /* Горка: обе стороны больше предельного диаметра одиночной крупинки. Локальный порог «выедает» середину
+         тёмной горки, и она выглядит пустотелой (boxFill мал), поэтому проверяем её раньше формы:
+         горка должна попасть в комки (жёлтый контур, предупреждение), а не пропасть молча. */
+      const maxSide = 2 * Math.sqrt(maxArea / Math.PI)
+      if (w > maxSide && h > maxSide) {
+        dropped.clumps++
+        clumps.push({ area: Math.max(area, Math.round(Math.PI * (Math.min(w, h) / 2) ** 2)), perimeter, circularity, cx, cy, w, h })
+        continue
+      }
       if (aspect > 2.8 || boxFill < 0.28 || isCold) {
         dropped.shape++; continue
       }
@@ -315,41 +331,22 @@ const quantile = (sortedD: number[], cumW: number[], q: number): number => {
 export const equivDiameterUm = (areaPx: number, pxPerMm: number): number =>
   (2 * Math.sqrt(areaPx / Math.PI) / pxPerMm) * 1000
 
-export function sieveDiameterUm(p: Particle, pxPerMm: number, projectionFactor = 0.85): number {
-  const eq = equivDiameterUm(p.area, pxPerMm)
-  const elongation = Math.min(p.w, p.h) / Math.max(1, Math.max(p.w, p.h))
-  return eq * projectionFactor * (0.75 + 0.25 * elongation)
-}
-
 export const MIN_PARTICLES = 150
 
-export interface SummarizeOptions {
-  expectedUm?: number
-  sieveMode?: boolean
+/* Границы одиночной крупинки: мельче 95 мкм не отличить от шума и пыли, крупнее 2,5 мм одиночной крупинки кофе не бывает
+   (значит, это слипшийся комок). Не зависят от настройки кофемолки и ожиданий. */
+export const MIN_SINGLE_UM = 95
+export const MAX_SINGLE_UM = 2500
+
+export function particleAreaLimits(pxPerMm: number): { minArea: number; maxArea: number } {
+  const area = (um: number) => { const r = (um / 1000) * pxPerMm / 2; return Math.round(Math.PI * r * r) }
+  return { minArea: Math.max(4, area(MIN_SINGLE_UM)), maxArea: Math.max(25, area(MAX_SINGLE_UM)) }
 }
 
-export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOptions = {}): GrindStats | null {
+export function summarize(seg: Segmentation, pxPerMm: number): GrindStats | null {
   if (!(pxPerMm > 0)) return null
-  const limitUm = (4 / pxPerMm) * 1000
-
-  const calcD = (p: Particle) => opts.sieveMode ? sieveDiameterUm(p, pxPerMm) : equivDiameterUm(p.area, pxPerMm)
-  const allDs = seg.particles.map(calcD).sort((a, b) => a - b)
-  if (!allDs.length) return null
-
-  let ds = allDs
-  let filteredClumps = false
-
-  if (opts.expectedUm !== undefined) {
-    const maxSingleParticleUm = Math.max(1100, Math.min(2000, opts.expectedUm * 2.1))
-    const minSingleParticleUm = Math.max(120, limitUm * 0.75)
-    const valid = allDs.filter(d => d >= minSingleParticleUm && d <= maxSingleParticleUm)
-    if (valid.length < allDs.length * 0.85) filteredClumps = true
-    const pool = valid.length >= 12 ? valid : allDs
-    const measureMedian = pool[Math.floor(pool.length / 2)]
-    const iqrCutoff = Math.min(maxSingleParticleUm, Math.max(1150, measureMedian * 2.15))
-    ds = pool.length >= 25 ? pool.filter(d => d <= iqrCutoff) : pool
-  }
-
+  const limitUm = (4 / pxPerMm) * 1000   // меньше ~4 px поперёк не отличить от шума
+  const ds = seg.particles.map(p => equivDiameterUm(p.area, pxPerMm)).sort((a, b) => a - b)
   if (!ds.length) return null
 
   const cum: number[] = []
@@ -370,7 +367,7 @@ export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOpt
     totalVol += v
     if (p.area > 8 * medArea) clumpVol += v
   }
-  if (seg.dropped.clumps > 0 || filteredClumps || (totalVol > 0 && clumpVol / totalVol > 0.12)) {
+  if (seg.dropped.clumps > 0 || (totalVol > 0 && clumpVol / totalVol > 0.12)) {
     flags.push('clumps')
   }
 
