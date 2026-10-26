@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
 import { GRIND_SIZES } from '../grinders/size'
-import { assessTrialOutcome, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './dialIn'
+import { assessTrialOutcome, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   id: 'log-1',
@@ -125,5 +125,46 @@ describe('findBestComparableBrew', () => {
     const current = log({ beanId: 'bean-1' })
     const candidate = log({ id: 'candidate', beanId: 'bean-1', rating: 5, taste: 'sour' })
     expect(findBestComparableBrew(current, [candidate])).toBeUndefined()
+  })
+})
+
+
+describe('recipeFromBestHistoricalBrew', () => {
+  it('offers an explicit same-bean same-method balanced reference scaled to the selected dose', () => {
+    const reference = log({
+      id: 'reference',
+      beanId: 'bean-1',
+      method: 'moccamaster',
+      doseG: 20,
+      waterG: 334,
+      tempC: 93,
+      rating: 5,
+      taste: 'balanced',
+      steps: [
+        { duration: 35, pourTo: 50, note: 'предсмачивание' },
+        { duration: 240, pourTo: 334, note: 'цикл' },
+      ],
+    })
+    const recipe = recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 30, [reference])!
+    expect(recipe.method).toBe('moccamaster')
+    expect(recipe.doseG).toBe(30)
+    expect(recipe.waterG).toBe(501)
+    expect(recipe.tempC).toBe(93)
+    expect(recipe.steps.map(s => s.pourTo)).toEqual([75, 501])
+    expect(recipe.title).toContain('5/5')
+  })
+
+  it('does not reuse unrelated beans, methods, or cups without balanced sensory notes', () => {
+    const base = log({ beanId: 'bean-1', rating: 5, taste: 'balanced' })
+    const wrongBean = { ...base, id: 'wrong-bean', beanId: 'bean-2' }
+    const wrongMethod = { ...base, id: 'wrong-method', method: 'v60' }
+    const notBalanced = { ...base, id: 'not-balanced', taste: 'sour' as const }
+    expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 20, [wrongBean, wrongMethod, notBalanced])).toBeUndefined()
+  })
+
+  it('does not reuse a recipe without a meaningful bean name or positive dose', () => {
+    const reference = log({ beanId: 'bean-1', rating: 5, taste: 'balanced' })
+    expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: ' ' }, 'moccamaster', 20, [reference])).toBeUndefined()
+    expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 0, [reference])).toBeUndefined()
   })
 })
