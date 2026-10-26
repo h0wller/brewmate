@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backupFileName, dialInProfilesToRestore, hasProfile, makeBackup, profileToRestore } from './backup'
+import { backupFileName, dialInProfilesToRestore, hasProfile, makeBackup, parseBackupJson, profileToRestore } from './backup'
 import type { DialInProfile } from './beans/dialInProfile'
 import { emptyData, sanitizeData } from './sync/merge'
 import { emptyProfile } from './grinders/profile'
@@ -29,6 +29,10 @@ describe('резервная копия', () => {
     expect(profileToRestore(b, emptyProfile())).toEqual(mine)
     expect(dialInProfilesToRestore(b, []).map(p => p.id)).toEqual([dialInProfile().id])
   })
+  it('rejects malformed backup JSON for the import error handler', () => {
+    expect(() => parseBackupJson('{broken json')).toThrow()
+  })
+
   it('sanitizes broken profiles and merges imports with local profiles', () => {
     const local = dialInProfile({ id: 'local', beanId: 'local-bean' })
     const imported = dialInProfile({ id: 'imported', beanId: 'imported-bean' })
