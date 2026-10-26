@@ -286,6 +286,15 @@ describe('assessTrialRepeatability', () => {
     expect(result.positive).toBe(3)
   })
 
+  it('does not mix different recipe signatures when assessing a series without an explicit target', () => {
+    const a = trial('a', 4, 'balanced')
+    const b = { ...trial('b', 4, 'balanced'), doseG: 21 }
+    const c = { ...trial('c', 5, 'balanced'), grind: { ...trial('c', 5, 'balanced').grind!, size: 'medium_fine' as const } }
+    const result = assessTrialRepeatability(source, [a, b, c])
+    expect(result.trials).toBe(1)
+    expect(result.status).toBe('insufficient')
+  })
+
   it('keeps a mostly positive series provisional if any trial is worse', () => {
     const result = assessTrialRepeatability(source, [
       trial('t1', 4, 'balanced'),
