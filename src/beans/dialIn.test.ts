@@ -147,6 +147,7 @@ describe('recipeFromBestHistoricalBrew', () => {
     })
     const recipe = recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 30, [reference])!
     expect(recipe.method).toBe('moccamaster')
+    expect(recipe.reference).toEqual({ sourceLogId: reference.id, sourceRating: 5 })
     expect(recipe.doseG).toBe(30)
     expect(recipe.waterG).toBe(501)
     expect(recipe.tempC).toBe(93)
