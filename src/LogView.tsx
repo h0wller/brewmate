@@ -7,7 +7,7 @@ import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
-import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './beans/dialIn'
+import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, planNextExperiment } from './beans/dialIn'
 import { useState } from 'react'
 
 export function LogView({ log, sourceLog, history, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
@@ -26,7 +26,8 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
 }) {
   const set = (p: Partial<BrewLog>) => onChange({ ...log, ...p })
   const dialIn = diagnoseNextCup(log)
-  const trial = makeTrialRecipe(log)
+  const nextExperiment = planNextExperiment(log, history)
+  const trial = nextExperiment.recipe
   const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
   const referenceAssessment = log.reference ? assessTrialOutcome(sourceLog, log) : undefined
   const comparable = findBestComparableBrew(log, history, { grinderId: log.grind?.grinder?.id, roastDate: log.beanRoastDate })
@@ -213,14 +214,15 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
 
       {log.taste && (
         <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
-          <div><b>Следующая проба: {dialIn.title}</b></div>
-          <div className="small">{dialIn.reason}</div>
+          <div><b>Следующий шаг: {nextExperiment.title}</b></div>
+          <div className="small">{nextExperiment.reason}</div>
+          <div className="small">Сенсорная гипотеза: {dialIn.reason}</div>
           <div>{dialIn.action}</div>
           <div className="small">
             Методика: <a href={dialIn.sourceUrl} target="_blank" rel="noreferrer">Barista Hustle — Coffee Compass</a>.
             Это проверяемая гипотеза, не диагноз: вкус зависит также от зерна, обжарки, воды и равномерности экстракции.
           </div>
-          {trial && <button className="btn" onClick={() => onMakeTrial(trial)}>Создать отдельный пробный рецепт</button>}
+          {trial && <button className="btn" onClick={() => onMakeTrial(trial)}>{nextExperiment.kind === 'repeat' ? 'Создать рецепт для повторной проверки' : 'Создать отдельный пробный рецепт'}</button>}
         </div>
       )}
 
