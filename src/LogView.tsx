@@ -1,17 +1,21 @@
 import type { BeanProfile, BrewLog } from './types'
+import type { GrindCheck } from './grind/store'
+import { BREW_TASTES, TASTE_LABEL } from './brewlog/taste'
 import { CurveChart } from './CurveChart'
 import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
 
-export function LogView({ log, beans, canRepeat, onChange, onBack, onRepeat, onDelete }: {
+export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete }: {
   log: BrewLog
   beans: BeanProfile[]
   canRepeat: boolean         // исходный рецепт ещё существует
+  check?: GrindCheck         // последний замер помола, привязанный к этой записи
   onChange: (l: BrewLog) => void
   onBack: () => void
   onRepeat: () => void
+  onCheckGrind: () => void
   onDelete: (id: string) => void
 }) {
   const set = (p: Partial<BrewLog>) => onChange({ ...log, ...p })
@@ -78,6 +82,16 @@ export function LogView({ log, beans, canRepeat, onChange, onBack, onRepeat, onD
         ))}
       </div>
 
+      <div className="small">Как на вкус</div>
+      <div className="lotChips">
+        {BREW_TASTES.map(t => (
+          <button key={t} className={'chip' + (log.taste === t ? ' on' : '')} aria-pressed={log.taste === t}
+            onClick={() => set({ taste: log.taste === t ? undefined : t })}>
+            {TASTE_LABEL[t]}
+          </button>
+        ))}
+      </div>
+
       <div className="small">Зерно</div>
       <select className="select" value={log.beanId ?? ''} onChange={e => pickBean(e.target.value)}>
         <option value="">— не выбрано —</option>
@@ -89,6 +103,12 @@ export function LogView({ log, beans, canRepeat, onChange, onBack, onRepeat, onD
       <textarea value={log.notes ?? ''} onChange={e => set({ notes: e.target.value })}
         placeholder="Кисло — помол мельче; горчит — вода холоднее…" />
 
+      <button className="btn secondary" onClick={onCheckGrind}>📷 Проверить помол по фото</button>
+      {check && (
+        <div className="small" style={{ marginTop: 0 }}>
+          Замер помола: настройка {check.setting}, типичный размер ≈ {check.d50} мкм
+        </div>
+      )}
       {canRepeat && <button className="btn" onClick={onRepeat}>☕ Сварить ещё раз по этому рецепту</button>}
       <button className="btn danger" onClick={() => onDelete(log.id)}>Удалить запись</button>
     </div>

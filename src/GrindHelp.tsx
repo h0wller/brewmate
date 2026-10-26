@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import type { GrinderProfile } from './types'
+import type { BrewLog, GrinderProfile } from './types'
 import { NumField } from './NumField'
 import { findGrinder } from './grinders/catalog'
+import { getGrinderScale, parseDialValue } from './grinders/presets'
+import { tasteForGrind } from './brewlog/taste'
+import { flowSignal } from './grind/flow'
 import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
 import type { GrindSize } from './grinders/size'
 import { COINS, scaleFromPoints, segment, summarize } from './grind/analyze'
@@ -40,8 +43,9 @@ async function loadToCanvas(file: File, canvas: HTMLCanvasElement): Promise<void
   if (revoke) URL.revokeObjectURL(revoke)
 }
 
-export function GrindHelp({ profile, checks, onAddCheck, onDeleteCheck, onBack, onOpenGrinder }: {
+export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onBack, onOpenGrinder }: {
   profile: GrinderProfile
+  log?: BrewLog               // если открыто из записи журнала: настройка, уровень и вкус подставляются из неё
   checks: GrindCheck[]
   onAddCheck: (c: GrindCheck) => void
   onDeleteCheck: (id: string) => void
@@ -49,9 +53,13 @@ export function GrindHelp({ profile, checks, onAddCheck, onDeleteCheck, onBack, 
   onOpenGrinder: () => void
 }) {
   const [step, setStep] = useState<Step>('setup')
-  const [setting, setSetting] = useState<number | null>(null)
-  const [size, setSize] = useState<GrindSize>('medium')
-  const [taste, setTaste] = useState<Taste | undefined>()
+  const [setting, setSetting] = useState<number | null>(() => {
+    const raw = log?.grind?.setting
+    return raw ? parseDialValue(raw, getGrinderScale(log?.grind?.grinder?.id ?? profile.grinder?.id)) : null
+  })
+  const [size, setSize] = useState<GrindSize>(log?.grind?.size ?? 'medium')
+  const [taste, setTaste] = useState<Taste | undefined>(() => tasteForGrind(log?.taste))
+  const flow = useMemo(() => (log ? flowSignal(log) : undefined), [log])
   const [coinId, setCoinId] = useState<string>(COINS[0].id)
   const [pts, setPts] = useState<Pt[]>([])
   const [err, setErr] = useState('')
@@ -74,10 +82,10 @@ export function GrindHelp({ profile, checks, onAddCheck, onDeleteCheck, onBack, 
   const mine = useMemo(() => checks.filter(c => (c.grinderId ?? '') === (grinderId ?? '')), [checks, grinderId])
 
   const advice = useMemo(() => stats ? adviseGrind({
-    stats, size, taste, curve, grinderId, redClix: profile.redClix,
+    stats, size, taste, flow, curve, grinderId, redClix: profile.redClix,
     currentSetting: setting ?? undefined,
     decimals: setting !== null && !Number.isInteger(setting) ? 1 : 0,
-  }) : null, [stats, size, taste, curve, grinderId, profile.redClix, setting])
+  }) : null, [stats, size, taste, flow, curve, grinderId, profile.redClix, setting])
 
   /* рисуем: фото + отметки монеты (шаг 2) или найденные частицы (шаг 3) */
   const draw = () => {
@@ -155,7 +163,7 @@ export function GrindHelp({ profile, checks, onAddCheck, onDeleteCheck, onBack, 
     if (!stats || setting === null) return
     const now = Date.now()
     onAddCheck({
-      id: uid(), at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste,
+      id: uid(), at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste, logId: log?.id,
       d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
     })
     setSaved(true)
@@ -183,6 +191,7 @@ export function GrindHelp({ profile, checks, onAddCheck, onDeleteCheck, onBack, 
     <div>
       <button className="back" onClick={onBack}>← Назад</button>
       <h1>Помощь с помолом</h1>
+      {log && <div className="small" style={{ marginTop: 0 }}>Для записи «{log.title}»: настройка и вкус взяты из неё, их можно поправить.</div>}
 
       {step === 'setup' && (
         <>

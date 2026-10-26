@@ -108,3 +108,27 @@ describe('без кривой', () => {
     expect(a.notes.some(n => n.includes('комки'))).toBe(true)
   })
 })
+
+describe('время заваривания как подсказка', () => {
+  it('дольше плана при помоле у крупного края диапазона — советует крупнее (как «горько»)', () => {
+    const none = adviseGrind({ stats: stats(520), size: 'medium_fine' })
+    const slow = adviseGrind({ stats: stats(520), size: 'medium_fine', flow: 'slow' })
+    expect(none.verdict).toBe('ok')
+    expect(slow.verdict).toBe('coarser')
+    expect(slow.notes.some(n => n.includes('дольше плана'))).toBe(true)
+  })
+  it('быстрее плана при помоле у крупного края — советует мельче (как «кисло»)', () => {
+    const fast = adviseGrind({ stats: stats(740), size: 'medium_fine', flow: 'fast' })
+    expect(fast.verdict).toBe('finer')
+    expect(fast.notes.some(n => n.includes('быстрее плана'))).toBe(true)
+  })
+  it('вкус главнее времени: «кисло» + «дольше плана» не превращается в «горько»', () => {
+    const a = adviseGrind({ stats: stats(740), size: 'medium_fine', taste: 'sour', flow: 'slow' })
+    expect(a.verdict).toBe('finer')
+    expect(a.notes.some(n => n.includes('дольше плана'))).toBe(false)
+  })
+  it('вкус «нормально» оставляет время подсказкой, а отсутствие времени ничего не меняет', () => {
+    expect(adviseGrind({ stats: stats(520), size: 'medium_fine', taste: 'ok', flow: 'slow' }).verdict).toBe('coarser')
+    expect(adviseGrind({ stats: stats(620), size: 'medium_fine' }).verdict).toBe('ok')
+  })
+})
