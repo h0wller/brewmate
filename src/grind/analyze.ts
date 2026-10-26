@@ -410,3 +410,10 @@ export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOpt
     limitUm, coverage: seg.coverage, flags,
   }
 }
+
+export const FLAG_TEXT: Record<QualityFlag, string> = {
+  few_particles: 'Мало отдельных крупинок в кадре: рассыпь щепотку помола свободнее.',
+  too_dense: 'Частицы лежат слишком густо и слипаются: рассыпь тонким слоем на белой бумаге.',
+  low_resolution: 'Снимок слишком далёкий — мелочь не видна: сними ближе (монета должна занимать заметную часть кадра).',
+  clumps: 'На фото есть слипшиеся комки (обведены жёлтым) — они исключены из расчёта размера.',
+}
