@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
 import { GRIND_SIZES } from '../grinders/size'
-import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew } from './dialIn'
+import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew, summarizeBeanHistory } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   id: 'log-1',
@@ -226,5 +226,72 @@ describe('assessTrialRepeatability', () => {
     unscored.rating = undefined
     const result = assessTrialRepeatability(source, [unscored])
     expect(result.trials).toBe(0)
+  })
+})
+
+
+describe('summarizeBeanHistory', () => {
+  const bean = { id: 'bean-1', roastDate: '2026-10-01' }
+  const sameSetup = (p: Partial<BrewLog> = {}) => log({
+    id: 'history',
+    beanId: bean.id,
+    beanRoastDate: bean.roastDate,
+    method: 'moccamaster',
+    grind: { grinder: { id: 'comandante-c40' }, size: 'medium_coarse', setting: '28 clicks' },
+    doseG: 20,
+    waterG: 334,
+    tempC: 93,
+    rating: 4,
+    taste: 'balanced',
+    ...p,
+  })
+
+  it('summarizes only matching bean, method, grinder and roast-date snapshot', () => {
+    const result = summarizeBeanHistory(bean, 'moccamaster', 'comandante-c40', [
+      sameSetup({ id: 'a', rating: 4, waterG: 320, tempC: 92 }),
+      sameSetup({ id: 'b', rating: 5, waterG: 340, tempC: 94 }),
+      sameSetup({ id: 'other-bean', beanId: 'bean-2' }),
+      sameSetup({ id: 'other-roast', beanRoastDate: '2026-09-01' }),
+      sameSetup({ id: 'other-grinder', grind: { grinder: { id: '1zpresso-k-ultra' }, size: 'medium_coarse' } }),
+      sameSetup({ id: 'other-method', method: 'v60' }),
+    ])
+    expect(result.brews).toBe(2)
+    expect(result.ratedBrews).toBe(2)
+    expect(result.balancedBrews).toBe(2)
+    expect(result.meanRating).toBe(4.5)
+    expect(result.meanRatio).toBe(16.5)
+    expect(result.medianTempC).toBe(92)
+  })
+
+  it('does not silently mix legacy records without roast-date snapshots', () => {
+    const legacy = sameSetup({ beanRoastDate: undefined })
+    expect(summarizeBeanHistory(bean, 'moccamaster', 'comandante-c40', [legacy]).brews).toBe(0)
+  })
+
+  it('does not convert grinder settings into a shared click scale', () => {
+    const result = summarizeBeanHistory(bean, 'moccamaster', undefined, [
+      sameSetup({ grind: { size: 'medium_coarse', setting: '28 clicks' } }),
+      sameSetup(),
+    ])
+    expect(result.brews).toBe(0)
+  })
+})
+
+describe('historical recipe context guards', () => {
+  it('does not reuse a cup from another roast date or grinder', () => {
+    const reference = log({
+      id: 'reference',
+      beanId: 'bean-1',
+      beanRoastDate: '2026-10-01',
+      grind: { grinder: { id: 'comandante-c40' }, setting: '28 clicks', size: 'medium_coarse' },
+      rating: 5,
+      taste: 'balanced',
+    })
+    expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 20, [reference], {
+      grinderId: '1zpresso-k-ultra', roastDate: '2026-10-01',
+    })).toBeUndefined()
+    expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 20, [reference], {
+      grinderId: 'comandante-c40', roastDate: '2026-09-01',
+    })).toBeUndefined()
   })
 })
