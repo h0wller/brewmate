@@ -201,6 +201,75 @@ export function extractJson(text: string): unknown {
   try { return JSON.parse(m[0]) } catch { throw new ProviderError(502, 'модель вернула битый JSON') }
 }
 
+/* Контракт ответа модели: некорректный результат не отдаём клиенту, а пробуем следующего провайдера. */
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v)
+
+const boundedText = (v: unknown, max: number): v is string =>
+  typeof v === 'string' && v.trim().length > 0 && v.length <= max
+
+const PROCESSES = ['washed', 'natural', 'honey', 'anaerobic', 'other'] as const
+const ROASTS = ['light', 'medium', 'dark'] as const
+const GRIND_VERDICTS = ['ok', 'finer', 'coarser', 'unsure'] as const
+const GRIND_ISSUES = ['fines', 'clumps', 'uneven', 'bad_photo'] as const
+
+function validIsoDate(value: unknown): boolean {
+  if (value === null) return true
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T00:00:00.000Z`)
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
+/** Проверяет и нормализует недоверенный JSON модели по задаче. */
+export function normalizeVisionResult(task: VisionRequest['task'], value: unknown): unknown {
+  if (!isRecord(value)) throw new ProviderError(502, 'модель вернула JSON не того формата')
+
+  if (task === 'package') {
+    const bean = value.bean
+    const recipe = value.recipe
+    if (!isRecord(bean) || !isRecord(recipe)) {
+      throw new ProviderError(502, 'модель не вернула данные зерна и рецепта')
+    }
+    if (!boundedText(bean.name, 120) || !boundedText(bean.origin, 160) ||
+        !boundedText(bean.notes, 400) || !boundedText(recipe.title, 120)) {
+      throw new ProviderError(502, 'модель вернула неполные данные пачки')
+    }
+    if (bean.process !== undefined && !PROCESSES.includes(bean.process as typeof PROCESSES[number])) {
+      throw new ProviderError(502, 'модель вернула неизвестный способ обработки')
+    }
+    if (bean.roastLevel !== undefined && !ROASTS.includes(bean.roastLevel as typeof ROASTS[number])) {
+      throw new ProviderError(502, 'модель вернула неизвестный уровень обжарки')
+    }
+    if (bean.roastDate !== undefined && !validIsoDate(bean.roastDate)) {
+      throw new ProviderError(502, 'модель вернула некорректную дату обжарки')
+    }
+    return {
+      bean: {
+        name: bean.name.trim(),
+        origin: bean.origin.trim(),
+        notes: bean.notes.trim(),
+        ...(bean.process !== undefined ? { process: bean.process } : {}),
+        ...(bean.roastLevel !== undefined ? { roastLevel: bean.roastLevel } : {}),
+        ...(bean.roastDate !== undefined ? { roastDate: bean.roastDate } : {}),
+      },
+      recipe: { title: recipe.title.trim() },
+    }
+  }
+
+  if (!GRIND_VERDICTS.includes(value.verdict as typeof GRIND_VERDICTS[number]) ||
+      !boundedText(value.comment, 400) ||
+      !Array.isArray(value.issues) ||
+      value.issues.length > GRIND_ISSUES.length ||
+      value.issues.some(issue => !GRIND_ISSUES.includes(issue as typeof GRIND_ISSUES[number]))) {
+    throw new ProviderError(502, 'модель вернула некорректную оценку помола')
+  }
+  return {
+    verdict: value.verdict,
+    comment: value.comment.trim(),
+    issues: [...new Set(value.issues)],
+  }
+}
+
 async function callProvider(
   fetchFn: typeof fetch, p: Provider, req: VisionRequest, timeoutMs: number,
 ): Promise<unknown> {
@@ -230,7 +299,7 @@ async function callProvider(
     const data = (await res.json()) as { choices?: { message?: { content?: unknown } }[] }
     const text = data.choices?.[0]?.message?.content
     if (typeof text !== 'string') throw new ProviderError(502, 'пустой ответ модели')
-    return extractJson(text)
+    return normalizeVisionResult(req.task, extractJson(text))
   } catch (e) {
     if (e instanceof ProviderError) throw e
     throw new ProviderError(ctl.signal.aborted ? 504 : 502, (e as Error).message)

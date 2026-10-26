@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, runVision, validateRequest,
+  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, runVision, validateRequest,
 } from './vision'
 import type { Deps, Env, Provider } from './vision'
 
 const IMG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ=='
 const GOOD = { task: 'package', methodLabel: 'V60', image: IMG }
-const MODEL_JSON = { bean: { name: 'Тест' }, recipe: { title: 'Рецепт' } }
+const MODEL_JSON = { bean: { name: 'Тест', origin: 'Колумбия', notes: 'шоколад', process: 'washed', roastLevel: 'light', roastDate: null }, recipe: { title: 'Рецепт' } }
 const completion = (content: string) => ({ choices: [{ message: { content } }] })
 
 /* поддельный fetch: ответы по адресу провайдера, в порядке вызовов */
@@ -106,6 +106,34 @@ describe('счётчики и лимиты', () => {
     await checkLimits(s, 'a', '', lim, t); await checkLimits(s, 'a', '', lim, t)
     t += 86_400_000
     expect((await checkLimits(s, 'a', '', lim, t)).ok).toBe(true)
+  })
+})
+
+describe('normalizeVisionResult: контракт ответа модели', () => {
+  it('нормализует распознанную пачку и отбрасывает лишние поля', () => {
+    expect(normalizeVisionResult('package', { ...MODEL_JSON, prompt: 'не отдавать' })).toEqual(MODEL_JSON)
+  })
+  it('не принимает невалидную дату, неизвестную обработку и неполные поля', () => {
+    expect(() => normalizeVisionResult('package', {
+      bean: { ...MODEL_JSON.bean, roastDate: '2026-02-30' }, recipe: MODEL_JSON.recipe,
+    })).toThrow()
+    expect(() => normalizeVisionResult('package', {
+      bean: { ...MODEL_JSON.bean, process: 'invented' }, recipe: MODEL_JSON.recipe,
+    })).toThrow()
+    expect(() => normalizeVisionResult('package', {
+      bean: { name: 'Тест' }, recipe: MODEL_JSON.recipe,
+    })).toThrow()
+  })
+  it('проверяет структуру второго мнения по помолу', () => {
+    expect(normalizeVisionResult('grind', {
+      verdict: 'unsure', comment: 'На фото нельзя уверенно оценить помол.', issues: ['bad_photo'],
+      extra: 'не отдавать',
+    })).toEqual({
+      verdict: 'unsure', comment: 'На фото нельзя уверенно оценить помол.', issues: ['bad_photo'],
+    })
+    expect(() => normalizeVisionResult('grind', {
+      verdict: 'certain', comment: 'текст', issues: [],
+    })).toThrow()
   })
 })
 
