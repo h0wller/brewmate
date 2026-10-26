@@ -293,5 +293,11 @@ describe('historical recipe context guards', () => {
     expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 20, [reference], {
       grinderId: 'comandante-c40', roastDate: '2026-09-01',
     })).toBeUndefined()
+    expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 20, [reference], {
+      grinderId: undefined, roastDate: '2026-10-01',
+    })).toBeUndefined()
+    expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 20, [reference], {
+      grinderId: 'comandante-c40', roastDate: undefined,
+    })).toBeUndefined()
   })
 })
