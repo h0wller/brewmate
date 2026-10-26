@@ -19,15 +19,18 @@ const makeId = () => crypto.randomUUID()
 
 function PhotoThumb({ photo, onRemove }: { photo: VisionBenchPhoto; onRemove?: () => void }) {
   const [url, setUrl] = useState('')
+  const [loadError, setLoadError] = useState(false)
   useEffect(() => {
     const next = URL.createObjectURL(photo.blob)
     setUrl(next)
     return () => URL.revokeObjectURL(next)
   }, [photo.blob])
 
+  useEffect(() => { setLoadError(false) }, [photo.blob])
+
   return (
     <div className="benchPhoto">
-      {url && <img src={url} alt={photo.name} />}
+      {url && !loadError ? <img src={url} alt={photo.name} onError={() => setLoadError(true)} /> : <div className="benchPhotoBroken" role="img" aria-label={`Не удалось показать фото ${photo.name}`}>Фото не загружено</div>}
       <div className="benchPhotoName" title={photo.name}>{photo.name}</div>
       {onRemove && <button type="button" className="x" aria-label={`Удалить фото ${photo.name}`} onClick={onRemove}>×</button>}
     </div>
