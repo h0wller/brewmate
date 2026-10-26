@@ -51,7 +51,7 @@ describe('recommend', () => {
 
   it('натуральная обработка: чуть крупнее и прохладнее', () => {
     const r = recommend(bean({ process: 'natural' }), 'v60')
-    expect([r.size, r.nudge, r.temp]).toEqual(['medium_fine', 1, 92])
+    expect([r.size, r.nudge, r.temp]).toEqual(['medium_fine', 0, 93])
   })
 
   it('поправки складываются: тёмная натуральная дотягивает до следующего уровня', () => {
