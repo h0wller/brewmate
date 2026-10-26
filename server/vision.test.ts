@@ -64,6 +64,11 @@ describe('validateRequest', () => {
     expect(bad(null)).toBe(false)
     expect(bad('строка')).toBe(false)
   })
+  it('контекст зерна проверяется и передаётся в запрос AI', () => {
+    const v = validateRequest({ ...GOOD, methodLabel: 'Moccamaster', bean: { process: 'honey', roastLevel: 'light', roastDate: '2026-10-01', extra: 'ignore' } }, 1000)
+    expect(v.ok).toBe(true)
+    if (v.ok && v.value.task === 'package') expect(v.value.bean).toEqual({ process: 'honey', roastLevel: 'light', roastDate: '2026-10-01' })
+  })
   it('русские названия методов проходят', () => {
     expect(validateRequest({ ...GOOD, methodLabel: 'Френч-пресс' }, 1000).ok).toBe(true)
     expect(validateRequest({ ...GOOD, water: 'hard', doseG: 60 }, 1000).ok).toBe(true)
