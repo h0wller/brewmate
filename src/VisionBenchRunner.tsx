@@ -79,7 +79,7 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
       const body = await response.json() as ProviderList
       if (active) {
         setProviders(Array.isArray(body.providers) ? body.providers : [])
-        if (typeof body.maxImageChars === 'number' && body.maxImageChars >= 100_000) setMaxImageChars(body.maxImageChars)
+        if (typeof body.maxImageChars === 'number' && body.maxImageChars > 0) setMaxImageChars(body.maxImageChars)
       }
     }).catch(() => { if (active) setProviders([]) })
     return () => { active = false }
