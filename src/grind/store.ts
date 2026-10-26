@@ -100,9 +100,13 @@ export function loadPhotoProfiles(): PhotoGrindProfile[] {
   catch { return [] }
 }
 
+export function savePhotoProfiles(profiles: PhotoGrindProfile[]): void {
+  safeWrite(localStorage, PHOTO_GRIND_PROFILES_KEY, sanitizePhotoProfiles(profiles))
+}
+
 export function savePhotoProfile(profile: PhotoGrindProfile): void {
   const list = loadPhotoProfiles().filter(p => !(p.grinderId === profile.grinderId && p.size === profile.size))
-  safeWrite(localStorage, PHOTO_GRIND_PROFILES_KEY, [...list, profile].slice(-100))
+  savePhotoProfiles([...list, profile].slice(-100))
 }
 
 export function photoProfileFor(grinderId: string | undefined, size: GrindSize): PhotoGrindProfile | undefined {
