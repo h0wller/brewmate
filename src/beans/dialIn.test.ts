@@ -273,7 +273,8 @@ describe('summarizeBeanHistory', () => {
       sameSetup({ grind: { size: 'medium_coarse', setting: '28 clicks' } }),
       sameSetup(),
     ])
-    expect(result.brews).toBe(0)
+    expect(result.brews).toBe(1)
+    expect(result.grindSizes).toEqual(['medium_coarse'])
   })
 })
 
