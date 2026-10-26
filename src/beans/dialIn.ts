@@ -295,7 +295,11 @@ export interface BeanHistoryEvidence {
   balancedBrews: number
   meanRating?: number
   meanRatio?: number
+  ratioRange?: [number, number]
   medianTempC?: number
+  tempRange?: [number, number]
+  confidence: 'insufficient' | 'early-signal' | 'repeatable'
+  confidenceNote: string
   grindSizes: string[]
   roastDate?: string
 }
@@ -318,15 +322,28 @@ export function summarizeBeanHistory(
   )
   const rated = comparable.filter(log => log.rating !== undefined && Number.isFinite(log.rating))
   const temps = comparable.map(log => log.tempC).filter(Number.isFinite).sort((a, b) => a - b)
-  const ratios = comparable.filter(log => log.doseG > 0 && log.waterG > 0).map(log => log.waterG / log.doseG)
+  const ratios = comparable.filter(log => log.doseG > 0 && log.waterG > 0).map(log => log.waterG / log.doseG).sort((a, b) => a - b)
   const sizes = [...new Set(comparable.map(log => log.grind?.size).filter((v): v is GrindSize => Boolean(v)))]
+  const balancedRated = rated.filter(log => log.taste === 'balanced' && (log.rating ?? 0) >= 4).length
+  const confidence: BeanHistoryEvidence['confidence'] =
+    rated.length >= 3 && balancedRated / rated.length >= 2 / 3 ? 'repeatable'
+      : rated.length >= 2 ? 'early-signal' : 'insufficient'
+  const confidenceNote = confidence === 'repeatable'
+    ? 'Есть повторяющийся положительный сигнал минимум в трёх оценённых чашках. Это применимо только к сопоставимым условиям и не доказывает причинность.'
+    : confidence === 'early-signal'
+      ? 'Есть первые данные, но их недостаточно для уверенного вывода. Используй как ориентир, а не как подтверждённый профиль.'
+      : 'Пока недостаточно оценённых чашек, чтобы судить о повторяемости. Рецепт остаётся стартовой гипотезой.'
   return {
     brews: comparable.length,
+    confidence,
+    confidenceNote,
     ratedBrews: rated.length,
     balancedBrews: comparable.filter(log => log.taste === 'balanced').length,
     meanRating: rated.length ? Math.round((rated.reduce((sum, log) => sum + (log.rating ?? 0), 0) / rated.length) * 10) / 10 : undefined,
     meanRatio: ratios.length ? Math.round((ratios.reduce((sum, value) => sum + value, 0) / ratios.length) * 10) / 10 : undefined,
-    medianTempC: temps.length ? temps[Math.floor((temps.length - 1) / 2)] : undefined,
+    ratioRange: ratios.length ? [ratios[0], ratios[ratios.length - 1]] : undefined,
+    medianTempC: temps.length ? (temps.length % 2 ? temps[(temps.length - 1) / 2] : (temps[temps.length / 2 - 1] + temps[temps.length / 2]) / 2) : undefined,
+    tempRange: temps.length ? [temps[0], temps[temps.length - 1]] : undefined,
     grindSizes: sizes,
     roastDate: bean.roastDate,
   }
