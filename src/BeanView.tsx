@@ -285,7 +285,13 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
           </div>
           <div>
             {historyEvidence.meanRatio !== undefined ? `Среднее соотношение: 1:${historyEvidence.meanRatio}` : ''}
+            {historyEvidence.ratioRange ? ` (наблюдалось 1:${historyEvidence.ratioRange[0].toFixed(1)}–1:${historyEvidence.ratioRange[1].toFixed(1)})` : ''}
             {historyEvidence.medianTempC !== undefined ? ` · медианная температура: ${historyEvidence.medianTempC} °C` : ''}
+            {historyEvidence.tempRange ? ` (диапазон ${historyEvidence.tempRange[0]}–${historyEvidence.tempRange[1]} °C)` : ''}
+          </div>
+          <div className="small">
+            <b>{historyEvidence.confidence === 'repeatable' ? 'Повторяющийся положительный сигнал' : historyEvidence.confidence === 'early-signal' ? 'Предварительный сигнал' : 'Пока нет надёжного сигнала'}</b>
+            {' · '}{historyEvidence.confidenceNote}
           </div>
           <div className="small">
             {historyEvidence.ratedBrews
