@@ -243,6 +243,11 @@ export default function App() {
             check={[...grindChecks].filter(c => c.logId === l.id).sort((a, b) => b.at - a.at)[0]}
             onCheckGrind={() => navigate({ name: 'grind', logId: l.id })}
             onDelete={delLog}
+            onMakeTrial={r => {
+              const saved = stamp(r)
+              setRecipes(rs => [saved, ...rs])
+              navigate({ name: 'timer', id: saved.id })
+            }}
           />
         ) : <NotFound to={{ name: 'journal' }} label="Журнал" />
       }
