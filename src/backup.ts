@@ -33,3 +33,8 @@ export function profileToRestore(raw: unknown, current: GrinderProfile): Grinder
 }
 
 export const backupFileName = (exportedAt: string) => `brewmate-${exportedAt.slice(0, 10)}.json`
+
+
+export function parseBackupJson(text: string): unknown {
+  return JSON.parse(text) as unknown
+}
