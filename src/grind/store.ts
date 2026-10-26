@@ -73,6 +73,7 @@ export interface PhotoGrindProfile {
   grinderId: string
   size: GrindSize
   setting: number
+  measuredSetting: number
   d50: number
   updatedAt: number
   checkId: string
@@ -87,7 +88,7 @@ export function sanitizePhotoProfiles(raw: unknown): PhotoGrindProfile[] {
     const p = v as Record<string, unknown>
     return typeof p.grinderId === 'string' && p.grinderId.length > 0
       && GRIND_SIZES.includes(p.size as GrindSize)
-      && num(p.setting) && num(p.d50) && p.d50 > 0
+      && num(p.setting) && num(p.measuredSetting) && num(p.d50) && p.d50 > 0
       && num(p.updatedAt) && typeof p.checkId === 'string'
   }).slice(-100)
 }
