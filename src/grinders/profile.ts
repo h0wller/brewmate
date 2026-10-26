@@ -3,7 +3,7 @@ import type { GrindSize } from './size'
 import { GRIND_SIZES } from './size'
 import { normalizeGrind } from './grind'
 import { safeWrite } from '../storageError'
-import { allPresetSettings, presetSettingByCoarseness, presetSettingForSize } from './presets'
+import { allPresetSettings } from './presets'
 
 export const GRINDER_KEY = 'brewmate.grinder.v1'
 const KEY = GRINDER_KEY
@@ -45,14 +45,14 @@ export const settingFor = (p: GrinderProfile, size: GrindSize): string | undefin
 export function smartSettingFor(
   p: GrinderProfile,
   size: GrindSize,
-  coarseness?: number,
+  _coarseness?: number,
 ): string | undefined {
   const manual = p.calibration[size]
   if (manual) return manual
   return undefined
 }
 
-/* Помол для рецепта: уровень + настройка пользователя (или авто-пресет кофемолки при переданном coarseness) */
+/* Помол для рецепта: уровень + только пользовательская калибровка, если она есть. */
 export function grindFor(p: GrinderProfile, size: GrindSize, coarseness?: number): Grind {
   const g: Grind = { size }
   if (p.grinder) g.grinder = p.grinder
