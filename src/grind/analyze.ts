@@ -9,7 +9,10 @@
    4. диаметр = круг той же площади; D10/D50/D90 — по объёму (d³).
    Пороги формы и цвета — эвристики, не откалиброваны по ситовому анализу или лазерному анализатору.
    Это оценка для сравнений «до/после» на одной кофемолке, а не лабораторное измерение.
-   Результат НЕ зависит от ожидаемой настройки кофемолки: замер всегда сырой. */
+   По умолчанию замер сырой; поправка применяется только при явно переданном calibrationFactor. */
+
+import { SIEVE_REFERENCES } from './target'
+import type { SieveBracket } from './target'
 
 export interface Img { data: ArrayLike<number>; width: number; height: number } // RGBA, как ImageData
 
@@ -343,10 +346,20 @@ export function particleAreaLimits(pxPerMm: number): { minArea: number; maxArea:
   return { minArea: Math.max(4, area(MIN_SINGLE_UM)), maxArea: Math.max(25, area(MAX_SINGLE_UM)) }
 }
 
-export function summarize(seg: Segmentation, pxPerMm: number): GrindStats | null {
+export interface SummarizeOptions { calibrationFactor?: number }
+
+const clampCalibrationFactor = (factor: number): number => Math.max(0.55, Math.min(1.45, factor))
+
+export function computeSieveCalibrationFactor(rawD50Um: number, bracket: SieveBracket): number | null {
+  if (!Number.isFinite(rawD50Um) || rawD50Um <= 0) return null
+  return clampCalibrationFactor(SIEVE_REFERENCES[bracket].d50Um / rawD50Um)
+}
+
+export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOptions = {}): GrindStats | null {
   if (!(pxPerMm > 0)) return null
   const limitUm = (4 / pxPerMm) * 1000   // меньше ~4 px поперёк не отличить от шума
-  const ds = seg.particles.map(p => equivDiameterUm(p.area, pxPerMm)).sort((a, b) => a - b)
+  const calibrationFactor = clampCalibrationFactor(opts.calibrationFactor ?? 1)
+  const ds = seg.particles.map(p => equivDiameterUm(p.area, pxPerMm) * calibrationFactor).sort((a, b) => a - b)
   if (!ds.length) return null
 
   const cum: number[] = []
