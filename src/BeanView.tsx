@@ -60,7 +60,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
     ? summarizeBeanHistory(bean, method, profile.grinder?.id, history)
     : null
   const savedDialIn = method !== null
-    ? findDialInProfile(dialInProfiles, profile.grinder?.id, method, bean.id, bean.roastDate)
+    ? findDialInProfile(dialInProfiles, profile.grinder?.id, method, { matchBean: true, beanId: bean.id, matchRoastDate: true, roastDate: bean.roastDate })
     : undefined
   const applicableDialIn = savedDialIn && savedDialIn.beanId === bean.id && savedDialIn.roastDate === bean.roastDate
     ? savedDialIn
@@ -116,7 +116,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
       <div className="row" style={{ flexWrap: 'wrap' }}><label>Обработка</label>
         {['washed', 'natural', 'honey', 'anaerobic'].map(p => (
           <button key={p} className={'chip' + (bean.process === p ? ' on' : '')}
-            onClick={() => set({ process: p })}>{p}</button>
+            onClick={() => set({ process: p })}>{({ washed: 'Мытый', natural: 'Натуральный', honey: 'Хани', anaerobic: 'Анаэробная ферментация' } as Record<string, string>)[p]}</button>
         ))}
       </div>
 
@@ -324,7 +324,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
             <div className="small">Профиль сохранён для другой партии или даты обжарки. Он не будет автоматически применён к этому зерну.</div>
           )}
           <div className="small">Профиль хранится отдельно от ручной калибровки и не переносит настройку на другие кофемолки.</div>
-        </div>
+          </div>
       )}
 
       {historyEvidence && historyEvidence.brews > 0 && (
@@ -352,9 +352,9 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
             { ` · отмечен баланс: ${historyEvidence.balancedBrews}` }
           </div>
           {historyEvidence.grindSizes.length > 0 && (
-            <div className="small">Уровни помола в истории: {historyEvidence.grindSizes.join(', ')}. Это записи шкалы крупности, а не конвертация кликов между кофемолками.</div>
+            <div className="small">Уровни помола в истории: {historyEvidence.grindSizes.map(size => SIZE_LABEL[size as keyof typeof SIZE_LABEL] ?? size).join(', ')}. Это записи шкалы крупности, а не конвертация кликов между кофемолками.</div>
           )}
-        </div>
+          </div>
       )}
 
       {historicalRecipe && (
@@ -365,7 +365,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
               <button className="btn secondary" onClick={() => onMakeRecipe(historicalRecipe)}>Использовать исторический рецепт</button>
             </div>
           )}
-        </div>
+          </div>
       ) : (
         <div className="small">Выбери метод и дозу — покажу помол, температуру и воду.</div>
       )}
