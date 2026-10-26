@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
 import { GRIND_SIZES } from '../grinders/size'
-import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew, summarizeBeanHistory, planNextExperiment } from './dialIn'
+import { assessTrialOutcome, assessTrialRepeatability, assessTrialEvidenceConfidence, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew, summarizeBeanHistory, planNextExperiment } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   id: 'log-1',
@@ -307,6 +307,47 @@ describe('assessTrialRepeatability', () => {
   })
 })
 
+
+
+describe('assessTrialEvidenceConfidence', () => {
+  const source = log({ id: 'source', beanId: 'bean-1', beanRoastDate: '2026-10-01', taste: 'sour', rating: 3 })
+  const trial = (id: string, rating: number, taste: BrewLog['taste'] = 'balanced') => log({
+    id, beanId: 'bean-1', beanRoastDate: '2026-10-01', taste, rating,
+    trial: { sourceLogId: 'source', variable: 'grind', baselineTaste: 'sour' },
+  })
+
+  it('keeps a single successful cup at hypothesis level', () => {
+    const one = trial('one', 4)
+    const result = assessTrialEvidenceConfidence(source, [one], one)
+    expect(result.status).toBe('hypothesis')
+    expect(result.ratedTrials).toBe(1)
+  })
+
+  it('marks two similar balanced cups as preliminary, not repeatable', () => {
+    const a = trial('a', 4), b = trial('b', 5)
+    const result = assessTrialEvidenceConfidence(source, [a, b], a)
+    expect(result.status).toBe('preliminary')
+    expect(result.meanRating).toBe(4.5)
+  })
+
+  it('requires three balanced cups with a narrow rating range for repeatable evidence', () => {
+    const a = trial('a', 4), b = trial('b', 5), c = trial('c', 4)
+    expect(assessTrialEvidenceConfidence(source, [a, b, c], a).status).toBe('repeatable')
+    const inconsistent = trial('d', 2)
+    expect(assessTrialEvidenceConfidence(source, [a, b, inconsistent], a).status).toBe('hypothesis')
+  })
+
+  it('does not mix different recipe signatures or roast snapshots', () => {
+    const a = trial('a', 4), b = trial('b', 4)
+    const differentRecipe = trial('c', 5)
+    differentRecipe.doseG = 21
+    const otherRoast = trial('d', 5)
+    otherRoast.beanRoastDate = '2026-09-01'
+    const result = assessTrialEvidenceConfidence(source, [a, b, differentRecipe, otherRoast], a)
+    expect(result.ratedTrials).toBe(2)
+    expect(result.status).toBe('preliminary')
+  })
+})
 
 describe('summarizeBeanHistory', () => {
   const bean = { id: 'bean-1', roastDate: '2026-10-01' }
