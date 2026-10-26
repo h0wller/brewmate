@@ -67,7 +67,7 @@ describe('makeTrialRecipe', () => {
 
 describe('assessTrialOutcome', () => {
   it('marks a higher-rated balanced cup as promising but asks for replication', () => {
-    const source = log({ taste: 'sour', rating: 3 })
+    const source = log({ taste: 'sour', rating: 3, finalG: 310 })
     const trial = log({ id: 'trial-1', trial: { sourceLogId: source.id, variable: 'grind', baselineTaste: 'sour' }, taste: 'balanced', rating: 4, durationS: 225, finalG: 300 })
     const result = assessTrialOutcome(source, trial)
     expect(result.verdict).toBe('promising')
