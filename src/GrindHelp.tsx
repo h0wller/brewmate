@@ -272,7 +272,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
       d10: Math.round(stats.d10), d50: Math.round(advice.effectiveD50), d90: Math.round(stats.d90), n: stats.n,
     })
     if (grinderId) {
-      const nextProfile = { grinderId, size, setting: advice.suggested ?? setting, d50: Math.round(advice.effectiveD50), updatedAt: now, checkId }
+      const nextProfile = { grinderId, size, setting: advice.suggested ?? setting, measuredSetting: setting, d50: Math.round(advice.effectiveD50), updatedAt: now, checkId }
       savePhotoProfile(nextProfile)
       setPhotoProfile(nextProfile)
     }
@@ -332,7 +332,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
             <div className="card" style={{ display: 'block', cursor: 'default' }}>
               <b>Последний профиль по фото · {SIZE_LABEL[size]}</b>
               <div className="small" style={{ margin: '4px 0 0' }}>
-                {photoProfile.setting} {grinderScale?.unit ?? 'дел.'} · D50 ≈ {photoProfile.d50} мкм · {new Date(photoProfile.updatedAt).toLocaleDateString('ru-RU')}
+                рекомендация {photoProfile.setting} {grinderScale?.unit ?? 'дел.'} · замер при {photoProfile.measuredSetting} · D50 ≈ {photoProfile.d50} мкм · {new Date(photoProfile.updatedAt).toLocaleDateString('ru-RU')}
               </div>
               <div className="small" style={{ margin: '4px 0 0' }}>Отдельный ориентир для этой кофемолки. Ручная калибровка и заводские настройки не изменены.</div>
             </div>
