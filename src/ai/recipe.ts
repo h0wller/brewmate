@@ -2,7 +2,6 @@ import type { BeanProfile, BrewStep, GrinderProfile, Recipe } from '../types'
 import { METHODS, recommend, recipeFromBean } from '../beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from '../beans/engine'
 import { grindFor } from '../grinders/profile'
-import { uid } from '../storage'
 
 /* Шаги из ответа модели: мусор отбрасываем, пустое заменяем двумя простыми шагами */
 export const sanitizeSteps = (raw: unknown): BrewStep[] => {
@@ -43,11 +42,9 @@ export function buildAIResult(
     bean,
     recipe: {
       ...recipe,
-      id: uid(),
       title: typeof r.title === 'string' && r.title.trim()
         ? r.title
         : `${bean.name || 'Зерно'} · AI · ${METHODS[method].label}`,
-      createdAt: Date.now(),
     },
   }
 }
