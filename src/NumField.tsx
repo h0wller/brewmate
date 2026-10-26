@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { fmtNum, parseNum } from './numField'
 
@@ -15,13 +15,9 @@ export function NumField({
   label?: string
   style?: CSSProperties
 }) {
-  const [text, setText] = useState(() => fmtNum(value))
-
-  useEffect(() => {
-    const cur = parseNum(text)
-    const want = value ?? null
-    if (cur !== want) setText(fmtNum(value))
-  }, [value, text])
+  const [draft, setDraft] = useState(() => ({ value: value ?? null, text: fmtNum(value) }))
+  const currentValue = value ?? null
+  const text = draft.value === currentValue ? draft.text : fmtNum(value)
 
   return (
     <input
@@ -37,10 +33,14 @@ export function NumField({
         const raw = e.target.value
         if (raw !== '' && !/^-?\d*[.,]?\d*$/.test(raw)) return // буквы и мусор не пускаем
         if (!decimal && /[.,]/.test(raw)) return
-        setText(raw)
-        onValue(parseNum(raw))
+        const parsed = parseNum(raw)
+        setDraft({ value: parsed, text: raw })
+        onValue(parsed)
       }}
-      onBlur={() => setText(fmtNum(parseNum(text)))}
+      onBlur={() => {
+        const parsed = parseNum(text)
+        setDraft({ value: parsed, text: fmtNum(parsed) })
+      }}
     />
   )
 }
