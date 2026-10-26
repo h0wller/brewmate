@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { capChecks, curvePoints, sanitizeChecks, sanitizePhotoProfiles } from './store'
 import type { GrindCheck } from './store'
+import { SIEVE_REFERENCES } from './target'
 
 const c = (p: Partial<GrindCheck>): GrindCheck => ({
   id: 'a', at: 1, setting: 20, size: 'medium', d10: 400, d50: 600, d90: 900, n: 300, ...p,
+})
+
+describe('эталонные ситовые фракции', () => {
+  it('использует среднегеометрический D50 и точные границы фракций', () => {
+    expect(SIEVE_REFERENCES['600-900']).toEqual({ minUm: 600, maxUm: 900, d50Um: 735 })
+    expect(SIEVE_REFERENCES['900-1400']).toEqual({ minUm: 900, maxUm: 1400, d50Um: 1122 })
+  })
 })
 
 describe('замеры помола', () => {
@@ -11,6 +19,9 @@ describe('замеры помола', () => {
     expect(sanitizeChecks(null)).toEqual([])
     expect(sanitizeChecks([null, 1, { id: 'x' }, c({ d50: -1 }), c({ size: 'huge' as never }), c({ d50: NaN })])).toEqual([])
     expect(sanitizeChecks([c({}), { ...c({ id: 'b' }), taste: 'weird' }]).map(x => x.taste)).toEqual([undefined, undefined])
+  })
+  it('сохраняет только известные источники замера и не ломает старые записи', () => {
+    expect(sanitizeChecks([c({ source: 'sieve' }), c({ id: 'photo', source: 'photo' }), c({ id: 'bad', source: 'other' as never })]).map(x => x.source)).toEqual(['sieve', 'photo', undefined])
   })
   it('точки кривой: только своя кофемолка, по настройке — самый свежий замер', () => {
     const list = [

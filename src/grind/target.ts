@@ -14,6 +14,12 @@ export const TARGET_UM: Record<GrindSize, [number, number]> = {
   extra_coarse: [1300, 1800],
 }
 
+/* Проверенные физические фракции для калибровки по лабораторным ситам. */
+export const SIEVE_REFERENCES = {
+  '600-900': { minUm: 600, maxUm: 900, d50Um: Math.round(Math.sqrt(600 * 900)) },
+  '900-1400': { minUm: 900, maxUm: 1400, d50Um: Math.round(Math.sqrt(900 * 1400)) },
+} as const
+
 /* Середина диапазона в логарифмическом масштабе: размеры растут «в разы», а не «на сколько-то» */
 export const midUm = (size: GrindSize): number => {
   const [lo, hi] = TARGET_UM[size]

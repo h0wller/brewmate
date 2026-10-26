@@ -4,6 +4,8 @@ import {
   loadBeans, loadChecks, loadDeleted, loadLogs, loadRecipes, loadSessions,
   saveBeans, saveChecks, saveDeleted, saveLogs, saveRecipes, saveSessions, uid,
 } from './storage'
+import { loadPhotoProfiles, savePhotoProfiles } from './grind/store'
+import { loadDialInProfiles, saveDialInProfiles } from './beans/dialInProfile'
 import { stamp } from './sync/merge'
 import type { GrindCheck } from './grind/store'
 import { StorageWarning } from './StorageWarning'
@@ -99,12 +101,13 @@ export default function App() {
       case 'settings': return (
         <SyncSettings
           initial={loadSyncConfig()}
-          local={{ recipes, sessions, beans, logs, grindChecks, deleted }}
+          local={{ recipes, sessions, beans, logs, grindChecks, dialInProfiles: loadDialInProfiles(), photoProfiles: loadPhotoProfiles(), deleted }}
           profile={profile}
           onProfile={setProfile}
           onMerged={d => {
             setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans)
             setLogs(d.logs); setGrindChecks(d.grindChecks); setDeleted(d.deleted)
+            saveDialInProfiles(d.dialInProfiles); savePhotoProfiles(d.photoProfiles)
           }}
           onClose={() => goBack({ name: 'brew' })}
           onOpenGrinder={() => navigate({ name: 'grinder' })}
@@ -294,7 +297,7 @@ export default function App() {
   return (
     <div>
       <StorageWarning
-        backup={() => ({ recipes, sessions, beans, logs, grindChecks, deleted })}
+        backup={() => ({ recipes, sessions, beans, logs, grindChecks, dialInProfiles: loadDialInProfiles(), photoProfiles: loadPhotoProfiles(), deleted })}
         profile={profile}
       />
       {content()}

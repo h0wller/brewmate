@@ -17,6 +17,7 @@ import { findGrinder } from './grinders/catalog'
 import { NumField } from './NumField'
 import { inRange } from './numField'
 import { clickableProps } from './a11y'
+import { loadPhotoProfiles } from './grind/store'
 import { loadDialInProfiles, findDialInProfile } from './beans/dialInProfile'
 import { uid } from './storage'
 
@@ -55,7 +56,8 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
   const doseOk = inRange(dose, 1, 500)
   const ready = method !== null && doseOk
   const rec = ready ? recommend(bean, method, water ?? 'balanced', dose) : null
-  const mySetting = rec ? smartSettingFor(profile, rec.size, rec.coarseness) : undefined
+  const photoProfiles = loadPhotoProfiles()
+  const mySetting = rec ? smartSettingFor(profile, rec.size, rec.coarseness, photoProfiles) : undefined
   const historicalRecipe = method !== null && doseOk && dose !== null
     ? recipeFromBestHistoricalBrew(bean, method, dose, history, { grinderId: profile.grinder?.id, roastDate: bean.roastDate })
     : undefined
@@ -288,7 +290,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
           <div className="tip">
             Не уверен в помоле? <button type="button" className="linkBtn" onClick={onOpenGrindHelp}>Проверить по фото</button>
           </div>
-          <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness), dose))}>
+          <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness, photoProfiles), dose))}>
             Сделать рецепт → в таймер
           </button>
           {savedDialIn && (
