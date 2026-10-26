@@ -60,7 +60,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
     ? summarizeBeanHistory(bean, method, profile.grinder?.id, history)
     : null
   const savedDialIn = method !== null
-    ? findDialInProfile(dialInProfiles, profile.grinder?.id, method)
+    ? findDialInProfile(dialInProfiles, profile.grinder?.id, method, bean.id, bean.roastDate)
     : undefined
   const applicableDialIn = savedDialIn && savedDialIn.beanId === bean.id && savedDialIn.roastDate === bean.roastDate
     ? savedDialIn
