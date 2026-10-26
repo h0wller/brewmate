@@ -252,7 +252,7 @@ describe('handle: HTTP-обработчик', () => {
   it('не POST → 405; чужой Origin → 403; не JSON и плохой запрос → 400', async () => {
     const { f } = fakeFetch({})
     const d = deps(f)
-    expect((await handle(new Request('https://brewmate.app/api/vision'), d)).status).toBe(405)
+    expect((await handle(new Request('https://brewmate.app/api/vision', { method: 'PUT' }), d)).status).toBe(405)
     expect((await handle(post(GOOD, { origin: 'https://evil.example' }), d)).status).toBe(403)
     expect((await handle(post(GOOD, { origin: 'https://brewmate.app' }), deps(fakeFetch({ 'generativelanguage': [ok()] }).f))).status).toBe(200)
     const notJson = new Request('https://brewmate.app/api/vision', { method: 'POST', body: '{не json' })
