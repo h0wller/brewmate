@@ -130,7 +130,7 @@ export function adviseGrind(inp: AdviseInput): Advice {
       }
     }
     if (basis === 'none') notes.push('Сдвинь на 1–2 шага и сфоткай ещё раз: после двух-трёх замеров приложение выучит твою кофемолку и назовёт точную настройку.')
-    if (basis === 'preset') notes.push('Число рассчитано от текущей настройки твоей кофемолки: после смены попробуй заварить или пересними.')
+    if (basis === 'preset') notes.push('Число ориентировочное (рассчитано от текущей настройки твоей кофемолки): после смены сфоткай ещё раз.')
   }
   return { verdict, offPct, effectiveD50, expectedD50, target: [lo, hi], aimUm, suggested, basis, reliable, notes }
 }
