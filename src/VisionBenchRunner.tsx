@@ -3,6 +3,38 @@ import { blobToDataUrl, saveVisionBenchRecord } from './ai/visionBenchStore'
 import type { VisionBenchRecord, VisionBenchRun } from './ai/visionBenchStore'
 
 type PublicProvider = { id: string; model: string; priority: number }
+type ProviderList = { providers?: PublicProvider[]; maxImageChars?: number }
+
+async function prepareImage(blob: Blob, maxImageChars: number): Promise<string> {
+  const targetChars = Math.max(100_000, maxImageChars - 10_000)
+  if (blob.size * 4 / 3 < targetChars) return blobToDataUrl(blob)
+  const url = URL.createObjectURL(blob)
+  try {
+    const image = new Image()
+    image.src = url
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve()
+      image.onerror = () => reject(new Error('Не удалось прочитать фото. Попробуй JPEG, PNG или WebP.'))
+    })
+    let scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight))
+    for (let attempt = 0; attempt < 7; attempt++) {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Браузер не поддерживает обработку фото.')
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      for (const quality of [0.86, 0.76, 0.66, 0.56]) {
+        const compressed = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
+        if (compressed && compressed.size * 4 / 3 < targetChars) return blobToDataUrl(compressed)
+      }
+      scale *= 0.8
+    }
+    throw new Error('Фото не удалось сжать до лимита сервера. Используй фото меньшего размера.')
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
 type PackageResult = { bean?: { origin?: string; process?: string; roastLevel?: string; roastDate?: string | null } }
 
 function normalized(value: string) {
@@ -35,6 +67,7 @@ async function errorMessage(response: Response) {
 
 export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchRecord; onComplete: () => Promise<void> }) {
   const [providers, setProviders] = useState<PublicProvider[]>([])
+  const [maxImageChars, setMaxImageChars] = useState(1_500_000)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
@@ -43,8 +76,11 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
     let active = true
     fetch('/api/vision').then(async response => {
       if (!response.ok) throw new Error('Не удалось получить список AI-провайдеров.')
-      const body = await response.json() as { providers?: PublicProvider[] }
-      if (active) setProviders(Array.isArray(body.providers) ? body.providers : [])
+      const body = await response.json() as ProviderList
+      if (active) {
+        setProviders(Array.isArray(body.providers) ? body.providers : [])
+        if (typeof body.maxImageChars === 'number' && body.maxImageChars >= 100_000) setMaxImageChars(body.maxImageChars)
+      }
     }).catch(() => { if (active) setProviders([]) })
     return () => { active = false }
   }, [])
@@ -66,7 +102,7 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
     setIsError(false)
     const runs: VisionBenchRun[] = [...(record.benchmarkRuns ?? [])]
     try {
-      const image = await blobToDataUrl(photo.blob)
+      const image = await prepareImage(photo.blob, maxImageChars)
       for (const provider of providers) {
         setMessage('Проверяю ' + provider.id + ' · ' + provider.model + '…')
         let nextRun: VisionBenchRun
