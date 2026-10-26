@@ -252,7 +252,7 @@ describe('handle: HTTP-обработчик', () => {
   it('не POST → 405; чужой Origin → 403; не JSON и плохой запрос → 400', async () => {
     const { f } = fakeFetch({})
     const d = deps(f)
-    expect((await handle(new Request('https://brewmate.app/api/vision'), d)).status).toBe(405)
+    expect((await handle(new Request('https://brewmate.app/api/vision', { method: 'PUT' }), d)).status).toBe(405)
     expect((await handle(post(GOOD, { origin: 'https://evil.example' }), d)).status).toBe(403)
     expect((await handle(post(GOOD, { origin: 'https://brewmate.app' }), deps(fakeFetch({ 'generativelanguage': [ok()] }).f))).status).toBe(200)
     const notJson = new Request('https://brewmate.app/api/vision', { method: 'POST', body: '{не json' })
@@ -288,6 +288,36 @@ describe('handle: HTTP-обработчик', () => {
     expect(res.status).toBe(503)
     expect((await res.json()).error).toBe('busy')
     expect(res.headers.get('Retry-After')).not.toBe(null)
+  })
+
+  it('GET exposes configured provider IDs and model names but never keys', async () => {
+    const d = deps(fakeFetch({}).f, { GEMINI_API_KEY: 'secret-g', GEMINI_MODEL: 'gemini-test' })
+    const res = await handle(new Request('https://brewmate.app/api/vision'), d)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.providers).toEqual([{ id: 'gemini', model: 'gemini-test', priority: 10 }])
+    expect(body.maxImageChars).toBe(1_500_000)
+    expect(JSON.stringify(body)).not.toContain('secret-g')
+  })
+  it('benchmark providerId calls only that configured provider and returns its ID', async () => {
+    const { f, calls } = fakeFetch({ 'generativelanguage': [ok()], 'groq': [ok()] })
+    const res = await handle(post({ ...GOOD, providerId: 'groq' }), deps(f))
+    expect(res.status).toBe(200)
+    expect(calls).toEqual(['groq'])
+    expect(await res.json()).toMatchObject({ provider: 'groq', result: MODEL_JSON })
+  })
+  it('does not silently fall back when the selected benchmark provider fails', async () => {
+    const { f, calls } = fakeFetch({ 'generativelanguage': [ok()], 'groq': [fail(500)] })
+    const res = await handle(post({ ...GOOD, providerId: 'groq' }), deps(f))
+    expect(res.status).toBe(503)
+    expect(calls).toEqual(['groq'])
+  })
+  it('rejects malformed or unconfigured benchmark provider IDs', async () => {
+    const d = deps(fakeFetch({}).f)
+    expect((await handle(post({ ...GOOD, providerId: '../secret' }), d)).status).toBe(400)
+    const res = await handle(post({ ...GOOD, providerId: 'qwen' }), d)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('provider_unavailable')
   })
 })
 

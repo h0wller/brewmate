@@ -5,6 +5,15 @@ export type VisionBenchPhoto = {
   blob: Blob
 }
 
+export type VisionBenchRun = {
+  providerId: string
+  model: string
+  photoId: string
+  ranAt: number
+  result?: unknown
+  error?: string
+}
+
 export type VisionBenchRecord = {
   id: string
   createdAt: number
@@ -22,6 +31,7 @@ export type VisionBenchRecord = {
   source: string
   notes: string
   photos: VisionBenchPhoto[]
+  benchmarkRuns?: VisionBenchRun[]
 }
 
 const DB_NAME = 'brewmate-vision-bench'
@@ -87,7 +97,7 @@ export async function deleteVisionBenchRecord(id: string): Promise<void> {
   }
 }
 
-async function blobToDataUrl(blob: Blob): Promise<string> {
+export async function blobToDataUrl(blob: Blob): Promise<string> {
   const bytes = new Uint8Array(await blob.arrayBuffer())
   let binary = ''
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
@@ -118,7 +128,7 @@ export async function exportVisionBench(records: VisionBenchRecord[]): Promise<s
 }
 
 export async function importVisionBench(file: File): Promise<VisionBenchRecord[]> {
-  if (file.size > MAX_IMPORT_BYTES) throw new Error('Файл импорта больше 60 МБ.')
+  if (file.size > MAX_IMPORT_BYTES) throw new Error('Файл импорта больше 100 МБ.')
   const parsed: unknown = JSON.parse(await file.text())
   if (!parsed || typeof parsed !== 'object') throw new Error('Некорректный JSON.')
   const root = parsed as Record<string, unknown>
@@ -157,6 +167,7 @@ export async function importVisionBench(file: File): Promise<VisionBenchRecord[]
       source: typeof r.source === 'string' ? r.source : '',
       notes: typeof r.notes === 'string' ? r.notes : '',
       photos,
+      ...(Array.isArray(r.benchmarkRuns) ? { benchmarkRuns: r.benchmarkRuns.filter((run): run is VisionBenchRun => !!run && typeof run === 'object' && typeof (run as Record<string, unknown>).providerId === 'string' && typeof (run as Record<string, unknown>).model === 'string' && typeof (run as Record<string, unknown>).photoId === 'string' && typeof (run as Record<string, unknown>).ranAt === 'number') } : {}),
     })
   }
   return records

@@ -6,6 +6,7 @@ import {
 } from './ai/visionBenchStore'
 import type { VisionBenchPhoto, VisionBenchRecord } from './ai/visionBenchStore'
 import './VisionBench.css'
+import { VisionBenchRunner } from './VisionBenchRunner'
 
 type Draft = Omit<VisionBenchRecord, 'id' | 'createdAt' | 'updatedAt'>
 
@@ -110,6 +111,7 @@ export function VisionBench() {
         id: editingId ?? makeId(),
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
+        ...(existing?.benchmarkRuns ? { benchmarkRuns: existing.benchmarkRuns } : {}),
       }
       await saveVisionBenchRecord(record)
       await refresh()
@@ -204,8 +206,8 @@ export function VisionBench() {
 
       <section className="benchIntro">
         <strong>Сначала соберём эталоны, затем сравним модели.</strong>
-        <p>Добавляй фото реальных пачек и вручную переноси подтверждённые данные с этикетки или сайта обжарщика. Пока это каталог для будущего тестирования: запросы к AI здесь не запускаются.</p>
-        <p className="benchPrivacy">Фотографии и записи хранятся локально в IndexedDB этого браузера. Они не отправляются на сервер. Экспортируй JSON, чтобы не потерять набор при очистке данных браузера или переносе на другое устройство.</p>
+        <p>Добавляй фото реальных пачек и вручную переноси подтверждённые данные с этикетки или сайта обжарщика. Для проверенных записей можно запускать настроенные на сервере модели и сравнивать их ответы с эталоном.</p>
+        <p className="benchPrivacy">Фотографии и записи хранятся локально в IndexedDB этого браузера. Пока ты не запускаешь тест, фото никуда не отправляются. При запуске выбранные фото отправляются через сервер приложения настроенным AI-провайдерам для анализа. Экспортируй JSON, чтобы не потерять набор при очистке данных браузера или переносе на другое устройство.</p>
         <div className="benchStats">
           <div><strong>{records.length}</strong><span>образцов</span></div>
           <div><strong>{records.reduce((sum, record) => sum + record.photos.length, 0)}</strong><span>фотографий</span></div>
@@ -325,6 +327,7 @@ export function VisionBench() {
               {record.photos.map(photo => <PhotoThumb key={photo.id} photo={photo} />)}
             </div>
             {record.notes && <p className="benchNotes">{record.notes}</p>}
+            <VisionBenchRunner record={record} onComplete={refresh} />
             <div className="benchRecordActions">
               <button type="button" className="chip" onClick={() => editRecord(record)}>Редактировать</button>
               <button type="button" className="chip fault" onClick={() => void removeRecord(record)}>Удалить</button>
