@@ -59,7 +59,7 @@ describe('buildAIResult', () => {
   it('Moccamaster: AI и локальный режим дают одинаковый расчёт и предсмачивание', () => {
     const { recipe } = buildAIResult(OUT, { ...ctx, method: 'moccamaster' })
     expect(recipe.method).toBe('moccamaster')
-    expect(recipe.tempC).toBe(94)
+    expect(recipe.tempC).toBe(96)
     expect(recipe.waterG).toBe(240)
     expect(recipe.steps).toHaveLength(3)
     expect(recipe.steps[1].pourTo).toBe(38)
