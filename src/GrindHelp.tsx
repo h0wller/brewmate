@@ -460,6 +460,37 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
               </div>
             )}
           </div>
+          {/* Режим калибровки по лабораторным ситам (для разработчика / дома) */}
+          <div className="card" style={{ display: 'block', background: '#1c1c22', border: '1px solid #2c2c36', marginTop: 10 }}>
+            <div className="small" style={{ color: '#4b8ef1', margin: '0 0 6px' }}>🔬 Калибровка по ситам (дом):</div>
+            <div className="small" style={{ margin: '0 0 8px' }}>Если это просеянная фракция, зафиксируй эталонный размер одной кнопкой:</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" className="chip" style={{ fontSize: 12 }} onClick={() => {
+                if (!stats || setting === null) return
+                // 600–900 мкм -> истинный D50 = sqrt(600*900) = 735 мкм
+                onAddCheck({
+                  id: uid(), at: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
+                  grinderId, setting, size, taste, logId: log?.id,
+                  d10: Math.round(stats.d10), d50: 735, d90: Math.round(stats.d90), n: stats.n,
+                })
+                setSaved(true)
+              }}>
+                Ситы 600–900 (735 мкм)
+              </button>
+              <button type="button" className="chip" style={{ fontSize: 12 }} onClick={() => {
+                if (!stats || setting === null) return
+                // 900–1400 мкм -> истинный D50 = sqrt(900*1400) = 1122 мкм
+                onAddCheck({
+                  id: uid(), at: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
+                  grinderId, setting, size, taste, logId: log?.id,
+                  d10: Math.round(stats.d10), d50: 1122, d90: Math.round(stats.d90), n: stats.n,
+                })
+                setSaved(true)
+              }}>
+                Ситы 900–1400 (1122 мкм)
+              </button>
+            </div>
+          </div>
 
           <button className="btn" style={{ marginTop: 8 }} disabled={setting === null || saved} onClick={save}>
             {saved ? 'Замер сохранён' : 'Сохранить замер'}
