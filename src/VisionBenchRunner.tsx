@@ -3,7 +3,8 @@ import { blobToDataUrl, saveVisionBenchRecord } from './ai/visionBenchStore'
 import type { VisionBenchRecord, VisionBenchRun } from './ai/visionBenchStore'
 
 type PublicProvider = { id: string; model: string; priority: number }
-type ProviderList = { providers?: PublicProvider[]; maxImageChars?: number }
+type ProviderStatus = { id: string; model: string; configured: boolean }
+type ProviderList = { providers?: PublicProvider[]; providerStatus?: ProviderStatus[]; maxImageChars?: number }
 
 async function prepareImage(blob: Blob, maxImageChars: number): Promise<string> {
   const targetChars = Math.max(10_000, maxImageChars - 10_000)
@@ -35,7 +36,11 @@ async function prepareImage(blob: Blob, maxImageChars: number): Promise<string> 
     URL.revokeObjectURL(url)
   }
 }
-type PackageResult = { bean?: { origin?: string; process?: string; roastLevel?: string; roastDate?: string | null } }
+type PackageResult = { bean?: { name?: string; origin?: string; notes?: string; process?: string; roastLevel?: string; roastDate?: string | null }; recipe?: { title?: string } }
+
+const PROCESS_LABELS: Record<string, string> = { washed: 'мытая', natural: 'натуральная', honey: 'хани', anaerobic: 'анаэробная', other: 'другая' }
+const ROAST_LABELS: Record<string, string> = { light: 'светлая', medium: 'средняя', dark: 'тёмная' }
+const formatDate = (timestamp: number) => new Date(timestamp).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
 
 function normalized(value: string) {
   return value.normalize('NFKC').toLocaleLowerCase().replace(/[ё]/g, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
@@ -67,6 +72,8 @@ async function errorMessage(response: Response) {
 
 export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchRecord; onComplete: () => Promise<void> }) {
   const [providers, setProviders] = useState<PublicProvider[]>([])
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus[]>([])
+  const [providerListError, setProviderListError] = useState('')
   const [maxImageChars, setMaxImageChars] = useState(1_500_000)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -79,9 +86,11 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
       const body = await response.json() as ProviderList
       if (active) {
         setProviders(Array.isArray(body.providers) ? body.providers : [])
+        setProviderStatus(Array.isArray(body.providerStatus) ? body.providerStatus : [])
+        setProviderListError('')
         if (typeof body.maxImageChars === 'number' && body.maxImageChars > 0) setMaxImageChars(body.maxImageChars)
       }
-    }).catch(() => { if (active) setProviders([]) })
+    }).catch((error: unknown) => { if (active) { setProviders([]); setProviderStatus([]); setProviderListError(error instanceof Error ? error.message : 'Не удалось загрузить конфигурацию AI.') } })
     return () => { active = false }
   }, [])
 
@@ -141,8 +150,15 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
     <div className="benchResults">
       <div className="benchRunnerHead">
         <strong>Сравнение моделей</strong>
-        <span>{providers.length ? providers.length + ' провайдеров настроено' : 'Список провайдеров недоступен'}</span>
+        <span>{providers.length ? providers.length + ' провайдеров настроено' : 'Нет настроенных провайдеров'}</span>
       </div>
+      {providerListError && <p className="benchRunError">Не удалось загрузить список провайдеров: {providerListError}</p>}
+      {providerStatus.length > 0 && <div className="benchProviderList" aria-label="Статус AI-провайдеров">
+        {providerStatus.map(provider => <div className="benchProviderStatus" key={provider.id}>
+          <span>{provider.id} · {provider.model}</span>
+          <strong className={provider.configured ? 'isConfigured' : 'isMissing'}>{provider.configured ? 'настроен' : 'нет API-ключа'}</strong>
+        </div>)}
+      </div>}
       <button type="button" className="chip" disabled={busy || !record.verified || !providers.length} onClick={() => void run()}>
         {busy ? 'Тестирую…' : 'Проверить моделями (' + providers.length + ')'}
       </button>
@@ -157,8 +173,17 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
                 <div><strong>{item.providerId}</strong><span>{item.model}</span></div>
                 {item.error ? <span className="benchRunError">{item.error}</span> : (
                   <>
-                    <span>{result?.bean?.origin || 'Происхождение не распознано'} · {result?.bean?.process || 'обработка не указана'} · {result?.bean?.roastLevel || 'обжарка не указана'}</span>
-                    {score && <span className="benchScore">Совпадение по заполненным эталонным полям: {score.correct}/{score.total} ({Math.round(score.correct / score.total * 100)}%)</span>}
+                    <span className="benchRunTimestamp">Завершено: {formatDate(item.ranAt)} · фото: {record.photos.find(photo => photo.id === item.photoId)?.name || 'фото не найдено'}</span>
+                    <div className="benchModelFields">
+                      <div><span>Название, по версии модели</span><strong>{result?.bean?.name || 'не распознано'}</strong></div>
+                      <div><span>Происхождение</span><strong>{result?.bean?.origin || 'не распознано'}</strong></div>
+                      <div><span>Обработка</span><strong>{result?.bean?.process ? PROCESS_LABELS[result.bean.process] || result.bean.process : 'не указана'}</strong></div>
+                      <div><span>Обжарка</span><strong>{result?.bean?.roastLevel ? ROAST_LABELS[result.bean.roastLevel] || result.bean.roastLevel : 'не указана'}</strong></div>
+                      <div><span>Дата обжарки</span><strong>{result?.bean?.roastDate || 'не распознана'}</strong></div>
+                      <div><span>Рецепт</span><strong>{result?.recipe?.title || 'не предложен'}</strong></div>
+                      <div className="benchModelNotes"><span>Описание / tasting notes</span><p>{result?.bean?.notes || 'модель не вернула описание'}</p></div>
+                    </div>
+                    {score && <span className="benchScore">Совпадение с эталоном: {score.correct}/{score.total} ({Math.round(score.correct / score.total * 100)}%). Это сравнение заполненных полей, а не общая точность модели.</span>}
                   </>
                 )}
               </div>
@@ -166,7 +191,7 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
           })}
         </div>
       )}
-      <p className="benchTip">Для сравнения используется первое фото записи. Каждый провайдер расходует отдельный AI-запрос; дневной лимит действует. Точность считается только по заполненным полям проверенного эталона: происхождению, обработке, уровню и дате обжарки.</p>
+      <p className="benchTip">Для сравнения используется первое фото записи. Каждый провайдер расходует отдельный AI-запрос; дневной лимит действует. Ответ модели — это распознавание с фотографии, а не подтверждённые факты. Совпадение считается только по заполненным полям проверенного эталона.</p>
     </div>
   )
 }
