@@ -31,6 +31,19 @@ export function assessTrialOutcome(source: BrewLog | undefined, trial: BrewLog):
   }
 
   const evidence: string[] = []
+  const sourceGrinder = source.grind?.grinder?.id
+  const trialGrinder = trial.grind?.grinder?.id
+  const mismatch =
+    source.method !== trial.method ||
+    (source.beanId && trial.beanId && source.beanId !== trial.beanId) ||
+    (source.beanRoastDate && trial.beanRoastDate && source.beanRoastDate !== trial.beanRoastDate) ||
+    (sourceGrinder && trialGrinder && sourceGrinder !== trialGrinder)
+  if (mismatch) return {
+    verdict: 'inconclusive',
+    summary: 'Эти чашки различаются по зерну, методу, дате обжарки или модели кофемолки. Их нельзя считать чистым сравнением эксперимента.',
+    evidence: ['Сначала выровняй контекст: зерно, метод, обжарка и кофемолка.'],
+  }
+
   const ratingDelta = source.rating !== undefined && trial.rating !== undefined
     ? trial.rating - source.rating
     : undefined
@@ -126,6 +139,8 @@ export function makeTrialRecipe(log: BrewLog): Recipe | undefined {
     id: uid(),
     title: `Проба · ${log.title}`,
     method: log.method,
+    beanId: log.beanId,
+    beanRoastDate: log.beanRoastDate,
     doseG: log.doseG,
     waterG: log.waterG,
     tempC: log.tempC,
@@ -244,7 +259,10 @@ export function assessTrialRepeatability(source: BrewLog, history: BrewLog[]): R
     log.trial?.sourceLogId === source.id &&
     log.method === source.method &&
     log.id !== source.id &&
-    (log.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
+    (source.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
+    log.method === source.method &&
+    (source.beanRoastDate ? log.beanRoastDate === source.beanRoastDate : !log.beanRoastDate) &&
+    (source.grind?.grinder?.id ? log.grind?.grinder?.id === source.grind.grinder.id : !log.grind?.grinder?.id) &&
     (log.taste !== undefined || log.rating !== undefined),
   )
 
