@@ -117,11 +117,13 @@ export default function App() {
 
       case 'grind': return (
         <GrindHelp
+          key={route.logId ?? 'free'}
+          log={route.logId ? logs.find(x => x.id === route.logId) : undefined}
           profile={profile}
           checks={grindChecks}
           onAddCheck={c => setGrindChecks(cs => [...cs, c])}
           onDeleteCheck={id => { markDeleted(id); setGrindChecks(cs => cs.filter(c => c.id !== id)) }}
-          onBack={() => goBack({ name: 'brew' })}
+          onBack={() => goBack(route.logId ? { name: 'entry', id: route.logId } : { name: 'brew' })}
           onOpenGrinder={() => navigate({ name: 'grinder' })}
         />
       )
@@ -238,6 +240,8 @@ export default function App() {
             onChange={nl => setLogs(ls => ls.map(x => x.id === nl.id ? stamp(nl) : x))}
             onBack={() => navigate({ name: 'journal' })}
             onRepeat={() => l.recipeId && navigate({ name: 'timer', id: l.recipeId })}
+            check={[...grindChecks].filter(c => c.logId === l.id).sort((a, b) => b.at - a.at)[0]}
+            onCheckGrind={() => navigate({ name: 'grind', logId: l.id })}
             onDelete={delLog}
           />
         ) : <NotFound to={{ name: 'journal' }} label="Журнал" />

@@ -1,5 +1,8 @@
 import type { GrindSize } from './grinders/size'
 
+/* Как на вкус результат (отметка пользователя в журнале; необязательна) */
+export type BrewTaste = 'sour' | 'bitter' | 'weak' | 'balanced'
+
 export interface BrewStep { duration: number; pourTo: number; note?: string }
 
 /* Помол. Три независимых способа его описать (формат совместим с CoffeeJSON):
@@ -47,6 +50,7 @@ export interface BrewLog {
   finalG?: number         // фактический вес в конце (с весов)
   curve?: WeightSample[]  // кривая веса по времени (только если были весы)
   rating?: number         // 1–5
+  taste?: BrewTaste       // кисло / горько / водянисто / баланс
   notes?: string
   createdAt: number
   updatedAt?: number

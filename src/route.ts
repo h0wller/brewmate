@@ -7,7 +7,7 @@ export type Route =
   | { name: 'edit'; id?: string }
   | { name: 'settings' }
   | { name: 'grinder' }
-  | { name: 'grind' }
+  | { name: 'grind'; logId?: string }   // logId: проверка помола для записи журнала
   | { name: 'ai' }
   | { name: 'beans' }
   | { name: 'bean'; id: string }
@@ -23,6 +23,7 @@ export const tabOf = (r: Route): Tab => {
     case 'beans': case 'bean': return 'bean'
     case 'cupping': case 'session': return 'cup'
     case 'journal': case 'entry': return 'log'
+    case 'grind': return r.logId ? 'log' : 'brew'
     default: return 'brew'
   }
 }
@@ -35,7 +36,7 @@ export function parseRoute(hash: string): Route {
   switch (a) {
     case 'settings': return { name: 'settings' }
     case 'grinder': return { name: 'grinder' }
-    case 'grind': return { name: 'grind' }
+    case 'grind': return b ? { name: 'grind', logId: b } : { name: 'grind' }
     case 'ai': return { name: 'ai' }
     case 'beans': return b ? { name: 'bean', id: b } : { name: 'beans' }
     case 'cupping': return b ? { name: 'session', id: b } : { name: 'cupping' }
@@ -57,7 +58,7 @@ export function formatRoute(r: Route): string {
     case 'edit': return r.id ? `#/brew/${enc(r.id)}/edit` : '#/brew/new'
     case 'settings': return '#/settings'
     case 'grinder': return '#/grinder'
-    case 'grind': return '#/grind'
+    case 'grind': return r.logId ? `#/grind/${enc(r.logId)}` : '#/grind'
     case 'ai': return '#/ai'
     case 'beans': return '#/beans'
     case 'bean': return `#/beans/${enc(r.id)}`

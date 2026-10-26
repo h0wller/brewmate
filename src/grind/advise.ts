@@ -4,6 +4,7 @@ import type { GrindStats } from './analyze'
 import { FLAG_TEXT } from './analyze'
 import { coarsenessFromUm, midUm, TARGET_UM } from './target'
 import { settingFor } from './curve'
+import type { Flow } from './flow'
 import type { Curve } from './curve'
 
 export type Taste = 'sour' | 'bitter' | 'ok'
@@ -24,6 +25,7 @@ export interface AdviseInput {
   stats: GrindStats
   size: GrindSize
   taste?: Taste
+  flow?: Flow                 // заваривание шло дольше/быстрее плана (только для проливных методов)
   currentSetting?: number
   curve?: Curve | null
   grinderId?: string
@@ -43,9 +45,18 @@ export function aimFor(size: GrindSize, taste: Taste = 'ok'): number {
 const round = (v: number, decimals = 0) => { const k = 10 ** decimals; return Math.round(v * k) / k }
 
 export function adviseGrind(inp: AdviseInput): Advice {
-  const { stats, size, taste = 'ok' } = inp
+  const { stats, size } = inp
   const [lo, hi] = TARGET_UM[size]
   const notes: string[] = stats.flags.map(f => FLAG_TEXT[f])
+  /* Вкус главнее времени. Если вкус не указан или «нормально», подсказкой служит время заваривания:
+     дольше плана — помол, вероятно, мелковат (как «горько»), быстрее — крупноват (как «кисло»). */
+  let taste: Taste = inp.taste ?? 'ok'
+  if (taste === 'ok' && inp.flow) {
+    taste = inp.flow === 'slow' ? 'bitter' : 'sour'
+    notes.push(inp.flow === 'slow'
+      ? 'Заваривание шло дольше плана — это тоже намекает, что помол мелковат.'
+      : 'Заваривание прошло быстрее плана — это тоже намекает, что помол крупноват.')
+  }
   const aimUm = aimFor(size, taste)
 
   let verdict: Verdict = 'ok'
