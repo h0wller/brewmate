@@ -113,7 +113,8 @@ function adjacentSize(size: GrindSize | undefined, direction: -1 | 1): GrindSize
   if (!size) return undefined
   const index = GRIND_SIZES.indexOf(size)
   if (index < 0) return undefined
-  const next = Math.max(0, Math.min(GRIND_SIZES.length - 1, index + direction))
+  const next = index + direction
+  if (next < 0 || next >= GRIND_SIZES.length) return undefined
   return GRIND_SIZES[next]
 }
 
