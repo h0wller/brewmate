@@ -192,6 +192,8 @@ export function recipeFromBean(
     id: uid(),
     title: `${bean.name || 'Зерно'} · ${METHODS[method].label}`,
     method,
+    beanId: bean.id,
+    beanRoastDate: bean.roastDate,
     doseG: dose,
     waterG: water,
     tempC: rec.temp,
