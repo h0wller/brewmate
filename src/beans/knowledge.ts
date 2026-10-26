@@ -63,3 +63,34 @@ export function moccamasterWaterGuidance(doseG: number): { minWaterG: number; ma
     maxWaterG: Math.round(doseG * BREW_KNOWLEDGE.moccamaster.ratioMax),
   }
 }
+
+/** General principles: constraints are explicit and traceable, not free-form model guesses. */
+export const BREWING_PRINCIPLES = [
+  {
+    id: 'grind-device-specific',
+    rule: 'A grinder dial number is not a universal grind-size unit. Use measured/user-calibrated settings or the manufacturer range for that exact grinder.',
+    sources: [
+      {
+        title: 'Can grind size make my coffee taste bitter or weak?',
+        publisher: 'Moccamaster USA Support',
+        url: 'https://support.moccamaster.com/hc/en-us/articles/1500009385562-Can-grind-size-make-my-coffee-taste-bitter-or-weak',
+      },
+    ],
+  },
+  {
+    id: 'taste-and-extraction',
+    rule: 'Do not infer a uniquely correct recipe from roast/process labels alone. Treat the recipe as a starting point and adjust against taste, brew time/flow, and where available TDS/extraction.',
+    sources: [
+      {
+        title: 'How Hot is Hot Enough? Brew Temperature, Sensory Profile, and Consumer Acceptance of Brewed Coffee',
+        publisher: 'Specialty Coffee Association',
+        url: 'https://sca.coffee/sca-news/25/issue-15/how-hot-is-hot-enough-brew-temperature-sensory-profile-and-consumer-acceptance-of-brewed-coffee-5dj5b',
+      },
+      {
+        title: 'ACM 2.08 - Recap and Glossary',
+        publisher: 'Barista Hustle',
+        url: 'https://www.baristahustle.com/lesson/acm-2-08-recap-and-glossary/',
+      },
+    ],
+  },
+] as const
