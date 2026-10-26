@@ -497,7 +497,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
 
   const providers = loadProviders(deps.env)
   if (req.method === 'GET') {
-    return json(200, { providers: providers.map(p => ({ id: p.id, model: p.model, priority: p.priority ?? 100 })) })
+    return json(200, { providers: providers.map(p => ({ id: p.id, model: p.model, priority: p.priority ?? 100 })), maxImageChars: loadLimits(deps.env).maxImageChars })
   }
 
   const limits = loadLimits(deps.env)
