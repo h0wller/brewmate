@@ -6,11 +6,12 @@ import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
-import { assessTrialOutcome, diagnoseNextCup, makeTrialRecipe } from './beans/dialIn'
+import { assessTrialOutcome, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './beans/dialIn'
 
-export function LogView({ log, sourceLog, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
+export function LogView({ log, sourceLog, history, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
   log: BrewLog
   sourceLog?: BrewLog
+  history: BrewLog[]
   beans: BeanProfile[]
   canRepeat: boolean         // исходный рецепт ещё существует
   check?: GrindCheck         // последний замер помола, привязанный к этой записи
@@ -25,6 +26,7 @@ export function LogView({ log, sourceLog, beans, canRepeat, check, onChange, onB
   const dialIn = diagnoseNextCup(log)
   const trial = makeTrialRecipe(log)
   const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
+  const comparable = findBestComparableBrew(log, history)
 
   const pickBean = (id: string) => {
     const b = beans.find(x => x.id === id)
@@ -51,6 +53,24 @@ export function LogView({ log, sourceLog, beans, canRepeat, check, onChange, onB
       <div className="small" style={{ marginTop: 0 }}>
         {log.doseG} г кофе{log.grind ? ` · ${formatGrind(log.grind, { withGrinder: true })}` : ''}
       </div>
+
+      {comparable && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Удачная чашка для этого зерна и метода</b>
+          <div className="small">
+            Исторический ориентир: {fmtDate(comparable.startedAt)} · оценка {comparable.rating}/5 · отмечен баланс.
+          </div>
+          <div>
+            {comparable.doseG} г кофе / {comparable.waterG} г воды · {comparable.tempC} °C
+            {comparable.grind ? ` · ${formatGrind(comparable.grind, { withGrinder: true })}` : ''}
+          </div>
+          <div className="small">
+            Время {fmt(comparable.durationS)}
+            {comparable.finalG !== undefined ? ` · выход ${comparable.finalG.toFixed(1)} г` : ''}.
+            Это прошлый удачный результат, а не гарантия для другой партии или степени свежести.
+          </div>
+        </div>
+      )}
 
       {log.curve && log.curve.length > 1
         ? <CurveChart curve={log.curve} steps={log.steps} durationS={log.durationS} />
