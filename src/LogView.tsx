@@ -35,7 +35,7 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
   const profileAssessment = assessTrialRepeatability(repeatabilitySource, history, log.trial ? log : undefined)
   const candidateProfile = profileFromConfirmedLog(log, profileAssessment)
   const [profiles, setProfiles] = useState(loadDialInProfiles)
-  const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method)
+  const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method, log.beanId, log.beanRoastDate)
   const relatedTrials = history.filter(item => item.trial?.sourceLogId === log.id && item.method === log.method)
 
   const pickBean = (id: string) => {
