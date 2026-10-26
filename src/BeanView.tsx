@@ -220,6 +220,9 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
             {aiResult.recipe.grind?.setting ? ` (${aiResult.recipe.grind.setting})` : ''}
             {` · шагов: ${aiResult.recipe.steps.length}`}
           </div>
+          <div className="small" style={{ marginTop: 8 }}>
+            Расчётные числа здесь берёт тот же локальный движок, что и в подсказке ниже: AI помогает распознать данные пачки, но не угадывает клики или параметры заваривания. Так сохраняется единая логика рекомендаций.
+          </div>
           <button className="btn" onClick={() => onMakeRecipe(aiResult.recipe)}>Открыть рецепт →</button>
           <button className="btn secondary" onClick={() => setAiResult(null)}>Не нужен</button>
         </div>
