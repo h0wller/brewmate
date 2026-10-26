@@ -68,7 +68,7 @@ export function activeCalibrationFactor(checks: GrindCheck[], grinderId?: string
     && typeof c.calibrationFactor === 'number'
     && Number.isFinite(c.calibrationFactor)
     && c.calibrationFactor >= 0.55 && c.calibrationFactor <= 1.45
-  const own = checks.filter(c => valid(c) && (c.grinderId ?? '') === (grinderId ?? ''))
+  const own = grinderId ? checks.filter(c => valid(c) && c.grinderId === grinderId) : []
   const selected = own.length ? own : checks.filter(valid)
   if (!selected.length) return 1
   const factors = selected.map(c => c.calibrationFactor!).sort((a, b) => a - b)
