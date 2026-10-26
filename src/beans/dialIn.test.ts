@@ -44,6 +44,8 @@ describe('makeTrialRecipe', () => {
     const trial = makeTrialRecipe(source)!
     expect(trial.id).not.toBe(source.id)
     expect(trial.trial).toEqual({ sourceLogId: source.id, variable: 'grind', baselineTaste: 'sour' })
+    expect(trial.beanId).toBe(source.beanId)
+    expect(trial.beanRoastDate).toBe(source.beanRoastDate)
     expect(trial.grind?.size).toBe('medium')
     expect(trial.grind?.setting).toBeUndefined()
     expect(source.grind?.setting).toBe('28 clicks')
@@ -97,6 +99,14 @@ describe('assessTrialOutcome', () => {
     const result = assessTrialOutcome(source, trial)
     expect(result.verdict).toBe('inconclusive')
     expect(result.summary).toContain('Недостаточно')
+  })
+
+  it('refuses to compare cups from different brewers, beans, roast dates, or grinder models', () => {
+    const source = log({ beanId: 'bean-a', beanRoastDate: '2026-10-01', rating: 3, taste: 'sour' })
+    expect(assessTrialOutcome(source, log({ method: 'v60', beanId: 'bean-a', beanRoastDate: '2026-10-01', rating: 4, taste: 'balanced' })).verdict).toBe('inconclusive')
+    expect(assessTrialOutcome(source, log({ beanId: 'bean-b', beanRoastDate: '2026-10-01', rating: 4, taste: 'balanced' })).verdict).toBe('inconclusive')
+    expect(assessTrialOutcome(source, log({ beanId: 'bean-a', beanRoastDate: '2026-09-01', rating: 4, taste: 'balanced' })).verdict).toBe('inconclusive')
+    expect(assessTrialOutcome(source, log({ beanId: 'bean-a', beanRoastDate: '2026-10-01', grind: { grinder: { id: 'other-grinder' }, size: 'medium_coarse' }, rating: 4, taste: 'balanced' })).verdict).toBe('inconclusive')
   })
 
   it('handles deleted source logs explicitly', () => {
