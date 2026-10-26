@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
-import { diagnoseNextCup, makeTrialRecipe } from './dialIn'
+import { assessTrialOutcome, diagnoseNextCup, makeTrialRecipe } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   id: 'log-1',
@@ -61,5 +61,37 @@ describe('makeTrialRecipe', () => {
 
   it('does not create a trial for balanced coffee', () => {
     expect(makeTrialRecipe(log({ taste: 'balanced' }))).toBeUndefined()
+  })
+})
+
+
+describe('assessTrialOutcome', () => {
+  it('marks a higher-rated balanced cup as promising but asks for replication', () => {
+    const source = log({ taste: 'sour', rating: 3 })
+    const trial = log({ id: 'trial-1', trial: { sourceLogId: source.id, variable: 'grind', baselineTaste: 'sour' }, taste: 'balanced', rating: 4, durationS: 225, finalG: 300 })
+    const result = assessTrialOutcome(source, trial)
+    expect(result.verdict).toBe('promising')
+    expect(result.summary).toContain('Повтори пробу')
+    expect(result.evidence.some(x => x.includes('+1'))).toBe(true)
+    expect(result.evidence.some(x => x.includes('Время:'))).toBe(true)
+    expect(result.evidence.some(x => x.includes('Выход:'))).toBe(true)
+  })
+
+  it('flags lower rating as worse even when brew time is shorter', () => {
+    const source = log({ taste: 'balanced', rating: 5, durationS: 240 })
+    const trial = log({ id: 'trial-1', taste: 'sour', rating: 3, durationS: 180 })
+    expect(assessTrialOutcome(source, trial).verdict).toBe('worse')
+  })
+
+  it('does not infer quality from time/yield alone', () => {
+    const source = log({ rating: undefined, taste: undefined, durationS: 240, finalG: 300 })
+    const trial = log({ id: 'trial-1', rating: undefined, taste: undefined, durationS: 200, finalG: 300 })
+    const result = assessTrialOutcome(source, trial)
+    expect(result.verdict).toBe('inconclusive')
+    expect(result.summary).toContain('Недостаточно')
+  })
+
+  it('handles deleted source logs explicitly', () => {
+    expect(assessTrialOutcome(undefined, log()).verdict).toBe('inconclusive')
   })
 })
