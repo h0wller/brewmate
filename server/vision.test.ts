@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, runVision, validateRequest,
+  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, PROVIDER_REGISTRY, runVision, validProviderBaseUrl, validateRequest,
 } from './vision'
 import type { Deps, Env, Provider } from './vision'
 
@@ -41,6 +41,25 @@ describe('провайдеры и лимиты из окружения', () => {
     expect(ps.map(p => p.id)).toEqual(['groq'])
     expect(ps[0].key).toBe('k')
     expect(ps[0].model).toBe('m1')
+  })
+  it('реестр явно описывает vision-возможности и поддерживает совместимый API-слот', () => {
+    expect(PROVIDER_REGISTRY.every(p => p.supportsVision && p.protocol === 'openai-chat-completions')).toBe(true)
+    const ps = loadProviders({
+      GROQ_API_KEY: 'g',
+      AI_COMPAT_API_KEY: 'c',
+      AI_COMPAT_BASE_URL: 'https://api.example.test/v1/',
+      AI_COMPAT_MODEL: 'vision-model',
+      AI_COMPAT_PROVIDER_ID: 'free-aggregator',
+    })
+    expect(ps.map(p => p.id)).toEqual(['groq', 'free-aggregator'])
+    expect(ps[1]).toMatchObject({ baseUrl: 'https://api.example.test/v1', model: 'vision-model', supportsVision: true, priority: 100 })
+  })
+  it('совместимый API принимает только безопасный HTTPS base URL', () => {
+    expect(validProviderBaseUrl('https://api.example.test/v1')).toBe(true)
+    expect(validProviderBaseUrl('http://api.example.test/v1')).toBe(false)
+    expect(validProviderBaseUrl('https://user:pass@api.example.test/v1')).toBe(false)
+    expect(validProviderBaseUrl('https://api.example.test/v1?key=secret')).toBe(false)
+    expect(loadProviders({ AI_COMPAT_API_KEY: 'x', AI_COMPAT_BASE_URL: 'http://localhost:3000/v1', AI_COMPAT_MODEL: 'm' })).toEqual([])
   })
   it('лимиты: значения по умолчанию и разбор мусора', () => {
     expect(loadLimits({})).toEqual({ perUserPerDay: 10, globalPerDay: 500, maxImageChars: 1_500_000 })
@@ -150,6 +169,25 @@ describe('runVision: перебор провайдеров', () => {
     const out = await runVision(f, ps, req, newHealth(), T)
     expect(out).toEqual({ ok: true, result: MODEL_JSON, provider: 'gemini' })
   })
+  it('сохраняет cooldown и last-good в общем хранилище между экземплярами', async () => {
+    const shared = new Map<string, string>()
+    const state = {
+      get: async (key: string) => shared.get(key) ?? null,
+      set: async (key: string, value: string) => { shared.set(key, value) },
+    }
+    const first = fakeFetch({ 'gem.test': [fail(429)], 'groq.test': [ok()] })
+    const h1 = newHealth()
+    const a = await runVision(first.f, ps, req, h1, T, 1000, () => {}, state)
+    expect(a.ok && a.provider).toBe('groq')
+    expect(shared.get('ai:vision:provider-until:gemini')).toBe(String(T + 60_000))
+    expect(shared.get('ai:vision:last-good')).toBe('groq')
+
+    const second = fakeFetch({ 'gem.test': [ok()], 'groq.test': [ok()] })
+    const h2 = newHealth()
+    const b = await runVision(second.f, ps, req, h2, T + 5_000, 1000, () => {}, state)
+    expect(b.ok && b.provider).toBe('groq')
+    expect(second.calls).toEqual(['groq.test'])
+  })
   it('429 у первого → берёт второго и первого не трогает в течение минуты', async () => {
     const { f, calls } = fakeFetch({ 'gem.test': [fail(429)], 'groq.test': [ok()] })
     const h = newHealth()
@@ -214,7 +252,7 @@ describe('handle: HTTP-обработчик', () => {
   it('не POST → 405; чужой Origin → 403; не JSON и плохой запрос → 400', async () => {
     const { f } = fakeFetch({})
     const d = deps(f)
-    expect((await handle(new Request('https://brewmate.app/api/vision'), d)).status).toBe(405)
+    expect((await handle(new Request('https://brewmate.app/api/vision', { method: 'PUT' }), d)).status).toBe(405)
     expect((await handle(post(GOOD, { origin: 'https://evil.example' }), d)).status).toBe(403)
     expect((await handle(post(GOOD, { origin: 'https://brewmate.app' }), deps(fakeFetch({ 'generativelanguage': [ok()] }).f))).status).toBe(200)
     const notJson = new Request('https://brewmate.app/api/vision', { method: 'POST', body: '{не json' })
@@ -250,6 +288,36 @@ describe('handle: HTTP-обработчик', () => {
     expect(res.status).toBe(503)
     expect((await res.json()).error).toBe('busy')
     expect(res.headers.get('Retry-After')).not.toBe(null)
+  })
+
+  it('GET exposes configured provider IDs and model names but never keys', async () => {
+    const d = deps(fakeFetch({}).f, { GEMINI_API_KEY: 'secret-g', GEMINI_MODEL: 'gemini-test' })
+    const res = await handle(new Request('https://brewmate.app/api/vision'), d)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.providers).toEqual([{ id: 'gemini', model: 'gemini-test', priority: 10 }])
+    expect(body.maxImageChars).toBe(1_500_000)
+    expect(JSON.stringify(body)).not.toContain('secret-g')
+  })
+  it('benchmark providerId calls only that configured provider and returns its ID', async () => {
+    const { f, calls } = fakeFetch({ 'generativelanguage': [ok()], 'groq': [ok()] })
+    const res = await handle(post({ ...GOOD, providerId: 'groq' }), deps(f))
+    expect(res.status).toBe(200)
+    expect(calls).toEqual(['groq'])
+    expect(await res.json()).toMatchObject({ provider: 'groq', result: MODEL_JSON })
+  })
+  it('does not silently fall back when the selected benchmark provider fails', async () => {
+    const { f, calls } = fakeFetch({ 'generativelanguage': [ok()], 'groq': [fail(500)] })
+    const res = await handle(post({ ...GOOD, providerId: 'groq' }), deps(f))
+    expect(res.status).toBe(503)
+    expect(calls).toEqual(['groq'])
+  })
+  it('rejects malformed or unconfigured benchmark provider IDs', async () => {
+    const d = deps(fakeFetch({}).f)
+    expect((await handle(post({ ...GOOD, providerId: '../secret' }), d)).status).toBe(400)
+    const res = await handle(post({ ...GOOD, providerId: 'qwen' }), d)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('provider_unavailable')
   })
 })
 

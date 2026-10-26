@@ -28,6 +28,7 @@ import { tabOf } from './route'
 import type { Route } from './route'
 import { goBack, navigate, useRoute } from './useRoute'
 import { clickableProps } from './a11y'
+import { VisionBench } from './VisionBench'
 
 /* Запись по ссылке не найдена (удалена или ссылка устарела) */
 function NotFound({ to, label }: { to: Route; label: string }) {
@@ -127,6 +128,8 @@ export default function App() {
           onOpenGrinder={() => navigate({ name: 'grinder' })}
         />
       )
+
+      case 'bench': return <VisionBench />
 
       case 'ai': return (
         <div>
@@ -300,6 +303,7 @@ export default function App() {
         <button className={tab === 'bean' ? 'on' : ''} onClick={() => navigate({ name: 'beans' })}>🫘 Зерно</button>
         <button className={tab === 'cup' ? 'on' : ''} onClick={() => navigate({ name: 'cupping' })}>🧪 Каппинг</button>
         <button className={tab === 'log' ? 'on' : ''} onClick={() => navigate({ name: 'journal' })}>📓 Журнал</button>
+        <button className={tab === 'bench' ? 'on' : ''} onClick={() => navigate({ name: 'bench' })}>AI-тест</button>
       </nav>
     </div>
   )

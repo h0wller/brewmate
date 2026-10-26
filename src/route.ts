@@ -15,14 +15,16 @@ export type Route =
   | { name: 'session'; id: string }
   | { name: 'journal' }
   | { name: 'entry'; id: string }
+  | { name: 'bench' }
 
-export type Tab = 'brew' | 'bean' | 'cup' | 'log'
+export type Tab = 'brew' | 'bean' | 'cup' | 'log' | 'bench'
 
 export const tabOf = (r: Route): Tab => {
   switch (r.name) {
     case 'beans': case 'bean': return 'bean'
     case 'cupping': case 'session': return 'cup'
     case 'journal': case 'entry': return 'log'
+    case 'bench': return 'bench'
     case 'grind': return r.logId ? 'log' : 'brew'
     default: return 'brew'
   }
@@ -38,6 +40,7 @@ export function parseRoute(hash: string): Route {
     case 'grinder': return { name: 'grinder' }
     case 'grind': return b ? { name: 'grind', logId: b } : { name: 'grind' }
     case 'ai': return { name: 'ai' }
+    case 'bench': return { name: 'bench' }
     case 'beans': return b ? { name: 'bean', id: b } : { name: 'beans' }
     case 'cupping': return b ? { name: 'session', id: b } : { name: 'cupping' }
     case 'journal': return b ? { name: 'entry', id: b } : { name: 'journal' }
@@ -66,5 +69,6 @@ export function formatRoute(r: Route): string {
     case 'session': return `#/cupping/${enc(r.id)}`
     case 'journal': return '#/journal'
     case 'entry': return `#/journal/${enc(r.id)}`
+    case 'bench': return '#/bench'
   }
 }

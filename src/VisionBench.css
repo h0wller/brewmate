@@ -1,0 +1,75 @@
+.visionBench { max-width: 860px; margin: 0 auto; }
+.visionBench .header { align-items: flex-start; gap: 12px; }
+.visionBench .header h1 { margin-bottom: 4px; }
+.benchActions { display: flex; gap: 6px; align-items: center; }
+.benchActions .btn { width: auto; margin: 0; padding: 9px 11px; font-size: 13px; }
+.benchImport { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; white-space: nowrap; }
+.benchImport input { display: none; }
+.benchIntro, .benchPanel, .benchRecord, .benchEmpty {
+  background: #1e1e22; border: 1px solid #303036; border-radius: 16px; padding: 14px; margin: 12px 0;
+}
+.benchIntro p { color: #c4c4cc; font-size: 14px; line-height: 1.45; margin: 8px 0; }
+.benchIntro .benchPrivacy { color: #98989f; font-size: 12px; }
+.benchStats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.benchStats > div { background: #29292f; border-radius: 12px; padding: 10px; text-align: center; }
+.benchStats strong { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.benchStats span { color: #98989f; font-size: 12px; }
+.benchPanel h2, .benchRecords h2 { font-size: 19px; margin: 4px 0 14px; }
+.benchField { display: flex; flex-direction: column; gap: 6px; color: #c4c4cc; font-size: 13px; margin-bottom: 12px; }
+.benchField input, .benchField select, .benchField textarea {
+  box-sizing: border-box; width: 100%; min-width: 0; margin: 0; background: #2b2b31;
+  border: 1px solid #3a3a42; border-radius: 10px; color: #fff; padding: 11px 12px;
+}
+.benchField input[type="file"] { padding: 9px; font-size: 14px; }
+.benchField input[type="date"] { min-height: 42px; }
+.benchField textarea { min-height: 76px; resize: vertical; }
+.benchGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
+.benchTip { color: #98989f; font-size: 12px; line-height: 1.4; margin: -4px 0 12px; }
+.benchPhotos { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+.benchPhoto { position: relative; width: 92px; min-width: 0; }
+.benchPhoto img { display: block; width: 92px; height: 92px; object-fit: cover; border-radius: 10px; background: #2b2b31; border: 1px solid #3a3a42; }
+.benchPhotoName { color: #98989f; font-size: 10px; margin-top: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.benchPhoto .x { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%; background: #17171a; color: #fff; }
+.benchCheck { display: flex; align-items: flex-start; gap: 9px; margin: 12px 0; color: #d6d6dc; font-size: 13px; line-height: 1.4; }
+.benchCheck input { width: 18px; height: 18px; flex: none; margin: 0; accent-color: #4b8ef1; }
+.benchFormActions { display: flex; gap: 8px; align-items: center; }
+.benchFormActions .btn { margin: 0; width: auto; }
+.benchFormActions .chip { margin: 0; }
+.benchMessage { border-radius: 10px; padding: 11px 13px; margin: 10px 0; background: #123a2b; color: #a8f0c8; font-size: 13px; overflow-wrap: anywhere; }
+.benchMessage.error { background: #3a1d20; color: #ffb4ae; }
+.benchRecords { margin-top: 22px; }
+.benchCount { display: inline-block; min-width: 24px; padding: 2px 7px; border-radius: 999px; background: #2b2b31; color: #c4c4cc; font-size: 12px; text-align: center; vertical-align: middle; }
+.benchEmpty { color: #c4c4cc; }
+.benchEmpty p { color: #98989f; font-size: 13px; line-height: 1.45; margin-bottom: 0; }
+.benchRecord { margin: 10px 0; }
+.benchRecordHeader { display: flex; align-items: flex-start; gap: 8px; }
+.benchRecordHeader h3 { font-size: 16px; margin: 0 0 5px; overflow-wrap: anywhere; }
+.benchRecordHeader .meta { line-height: 1.4; }
+.benchBadge { white-space: nowrap; border-radius: 999px; padding: 4px 8px; background: #383039; color: #e7c5a6; font-size: 11px; }
+.benchBadge.verified { background: #173b2c; color: #a8f0c8; }
+.benchRecordFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0 4px; }
+.benchRecordFields > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; background: #29292f; padding: 8px 9px; border-radius: 9px; }
+.benchRecordFields span { color: #98989f; font-size: 11px; }
+.benchRecordFields strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.benchNotes { color: #c4c4cc; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.benchRecordActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.benchRecordActions .chip { margin: 0; }
+@media (max-width: 520px) {
+  .visionBench .header { flex-direction: column; }
+  .benchActions { width: 100%; }
+  .benchActions .btn { flex: 1; }
+  .benchGrid { grid-template-columns: minmax(0, 1fr); }
+  .benchRecordHeader { flex-direction: column; }
+  .benchRecordFields { grid-template-columns: minmax(0, 1fr); }
+}
+
+.benchResults { margin-top: 12px; padding: 11px; border-radius: 10px; background: #29292f; }
+.benchRunnerHead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.benchRunnerHead span, .benchRun > div span { color: #98989f; font-size: 12px; overflow-wrap: anywhere; }
+.benchRunList { display: grid; gap: 8px; margin-top: 10px; }
+.benchRun { display: grid; gap: 5px; border-top: 1px solid #3a3a42; padding-top: 9px; font-size: 12px; overflow-wrap: anywhere; }
+.benchRun > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.benchRunError { color: #ffb4ae; font-size: 12px; }
+.benchScore { color: #a8f0c8; font-weight: 600; }
+.benchRunnerMessage { margin: 8px 0 0; color: #a8f0c8; font-size: 12px; }
+.benchResults .benchTip { margin: 10px 0 0; }
