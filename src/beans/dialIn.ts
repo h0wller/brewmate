@@ -35,9 +35,9 @@ export function assessTrialOutcome(source: BrewLog | undefined, trial: BrewLog):
   const trialGrinder = trial.grind?.grinder?.id
   const mismatch =
     source.method !== trial.method ||
-    (source.beanId && trial.beanId && source.beanId !== trial.beanId) ||
-    (source.beanRoastDate && trial.beanRoastDate && source.beanRoastDate !== trial.beanRoastDate) ||
-    (sourceGrinder && trialGrinder && sourceGrinder !== trialGrinder)
+    (source.beanId && source.beanId !== trial.beanId) ||
+    (source.beanRoastDate && source.beanRoastDate !== trial.beanRoastDate) ||
+    (sourceGrinder && sourceGrinder !== trialGrinder)
   if (mismatch) return {
     verdict: 'inconclusive',
     summary: 'Эти чашки различаются по зерну, методу, дате обжарки или модели кофемолки. Их нельзя считать чистым сравнением эксперимента.',
