@@ -88,6 +88,10 @@ export function curvePoints(list: GrindCheck[], grinderId?: string): CurvePoint[
   const bySetting = new Map<number, GrindCheck>()
   for (const c of list) {
     if ((c.grinderId ?? '') !== (grinderId ?? '') || typeof c.setting !== 'number') continue
+    // Ignore legacy placeholder sieve entries from the previous UI; a real reference has a measured photo and factor.
+    if (c.source === 'sieve' && (!(c.n > 0) || !(typeof c.rawD50 === 'number' && c.rawD50 > 0)
+      || !(typeof c.calibrationFactor === 'number' && c.calibrationFactor >= 0.55 && c.calibrationFactor <= 1.45)
+      || !c.sieveBracket)) continue
     const prev = bySetting.get(c.setting)
     if (!prev || prev.at <= c.at) bySetting.set(c.setting, c)
   }
