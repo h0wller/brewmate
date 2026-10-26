@@ -1,4 +1,5 @@
 import type { BrewLog, BrewStep } from '../types'
+import type { GrindSize } from '../grinders/size'
 
 /**
  * An explicitly promoted, repeatable dial-in snapshot. It is not the manual
@@ -15,7 +16,7 @@ export interface DialInProfile {
   doseG: number
   waterG: number
   tempC: number
-  grindSize?: string
+  grindSize?: GrindSize
   grinderSetting?: string
   steps: BrewStep[]
   positiveTrials: number
@@ -32,6 +33,7 @@ export function sanitizeDialInProfiles(raw: unknown): DialInProfile[] {
     const p = v as Record<string, unknown>
     return typeof p.id === 'string' && typeof p.grinderId === 'string' && p.grinderId.length > 0
       && typeof p.method === 'string' && p.method.length > 0
+      && (p.grindSize === undefined || ['extra_fine', 'fine', 'medium_fine', 'medium', 'medium_coarse', 'coarse', 'extra_coarse'].includes(String(p.grindSize)))
       && typeof p.sourceLogId === 'string'
       && typeof p.doseG === 'number' && Number.isFinite(p.doseG) && p.doseG > 0
       && typeof p.waterG === 'number' && Number.isFinite(p.waterG) && p.waterG > 0
