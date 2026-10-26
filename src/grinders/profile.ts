@@ -2,9 +2,11 @@ import type { Grind, GrinderProfile } from '../types'
 import type { GrindSize } from './size'
 import { GRIND_SIZES } from './size'
 import { normalizeGrind } from './grind'
+import { safeWrite } from '../storageError'
 import { allPresetSettings, presetSettingByCoarseness, presetSettingForSize } from './presets'
 
-const KEY = 'brewmate.grinder.v1'
+export const GRINDER_KEY = 'brewmate.grinder.v1'
+const KEY = GRINDER_KEY
 
 /* Метка ориентировочной настройки: заводские пресеты не проверены, свои значения метки не имеют */
 export const APPROX = '≈'
@@ -31,10 +33,7 @@ export const loadProfile = (): GrinderProfile => {
   catch { return emptyProfile() }
 }
 
-export const saveProfile = (p: GrinderProfile): void => {
-  try { localStorage.setItem(KEY, JSON.stringify(p)) }
-  catch (e) { console.warn('profile: не удалось сохранить', e) }
-}
+export const saveProfile = (p: GrinderProfile): void => { safeWrite(localStorage, KEY, p) }
 
 /* Настройка пользователя для уровня крупности (если он её указал вручную) */
 export const settingFor = (p: GrinderProfile, size: GrindSize): string | undefined =>

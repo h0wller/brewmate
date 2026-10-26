@@ -1,5 +1,7 @@
 import type { BeanProfile, BrewLog, CuppingSession, Recipe } from '../types'
 import { migrateGrind } from '../grinders/grind'
+import { capChecks, sanitizeChecks } from '../grind/store'
+import type { GrindCheck } from '../grind/store'
 
 /* id → время удаления (мс). Нужны, чтобы удалённое не «воскресало» при синхронизации */
 export type Tombstones = Record<string, number>
@@ -9,12 +11,13 @@ export interface AppData {
   sessions: CuppingSession[]
   beans: BeanProfile[]
   logs: BrewLog[]
+  grindChecks: GrindCheck[]
   deleted: Tombstones
 }
 
 interface Item { id: string; createdAt?: number; updatedAt?: number }
 
-export const emptyData = (): AppData => ({ recipes: [], sessions: [], beans: [], logs: [], deleted: {} })
+export const emptyData = (): AppData => ({ recipes: [], sessions: [], beans: [], logs: [], grindChecks: [], deleted: {} })
 
 /* пометить запись как изменённую сейчас */
 export const stamp = <T extends object>(x: T): T & { updatedAt: number } =>
@@ -43,6 +46,7 @@ export function sanitizeData(raw: unknown): AppData {
     sessions: cleanList<CuppingSession>(r.sessions),
     beans: cleanList<BeanProfile>(r.beans),
     logs: cleanList<BrewLog>(r.logs).map(migrateGrind),
+    grindChecks: sanitizeChecks(r.grindChecks),   // нет в старых копиях и на сервере — тогда пусто
     deleted: cleanDeleted(r.deleted),
   }
 }
@@ -76,6 +80,14 @@ export function mergeData(local: AppData, remote: AppData): AppData {
     sessions: mergeList(local.sessions, remote.sessions, deleted),
     beans: mergeList(local.beans, remote.beans, deleted),
     logs: mergeList(local.logs, remote.logs, deleted),
+    grindChecks: capChecks(mergeList(local.grindChecks, remote.grindChecks, deleted)),
     deleted,
   }
+}
+
+/* Что кладём на сервер: слитые данные поверх того, что там уже лежало. Поля, которых эта версия приложения
+   не знает (их записало более новое приложение на другом устройстве), сохраняем, а не затираем. */
+export function buildPayload(remoteRaw: unknown, merged: AppData): Record<string, unknown> {
+  const base = remoteRaw && typeof remoteRaw === 'object' && !Array.isArray(remoteRaw) ? remoteRaw : {}
+  return { ...base, ...merged }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { curvePoints, sanitizeChecks } from './store'
+import { capChecks, curvePoints, sanitizeChecks } from './store'
 import type { GrindCheck } from './store'
 
 const c = (p: Partial<GrindCheck>): GrindCheck => ({
@@ -21,5 +21,19 @@ describe('замеры помола', () => {
     ]
     const pts = curvePoints(list, 'g').sort((a, b) => a.setting - b.setting)
     expect(pts).toEqual([{ setting: 20, d50: 520 }, { setting: 30, d50: 760 }])
+  })
+})
+
+describe('лимит замеров', () => {
+  it('остаются самые свежие по времени, независимо от порядка в списке', () => {
+    const many = Array.from({ length: 230 }, (_, i) => c({ id: 'id' + i, at: 1000 - i }))   // от новых к старым
+    const kept = capChecks(many)
+    expect(kept).toHaveLength(200)
+    expect(kept[0].at).toBe(801)          // самые старые 30 отброшены
+    expect(kept.at(-1)!.at).toBe(1000)
+  })
+  it('старый замер без createdAt получает его из времени замера; logId сохраняется', () => {
+    const [x] = sanitizeChecks([{ ...c({ id: 'q', at: 42 }), logId: 'log1' }])
+    expect([x.createdAt, x.updatedAt, x.logId]).toEqual([42, 42, 'log1'])
   })
 })

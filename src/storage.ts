@@ -2,6 +2,9 @@ import type { BeanProfile, BrewLog, CuppingSession, Recipe } from './types'
 import { sanitizeData } from './sync/merge'
 import { migrateGrind } from './grinders/grind'
 import type { Tombstones } from './sync/merge'
+import { safeWrite } from './storageError'
+import { GRIND_CHECKS_KEY, loadChecks, saveChecks } from './grind/store'
+import { GRINDER_KEY } from './grinders/profile'
 
 const RKEY = 'brewmate.recipes.v1'
 const CKEY = 'brewmate.cupping.v1'
@@ -10,7 +13,8 @@ const LKEY = 'brewmate.logs.v1'
 const DKEY = 'brewmate.deleted.v1'
 
 /* ключи с пользовательскими данными (без ключей AI и синхронизации — там секреты) */
-export const DATA_KEYS = [RKEY, CKEY, BKEY, LKEY, DKEY]
+export const DATA_KEYS = [RKEY, CKEY, BKEY, LKEY, DKEY, GRIND_CHECKS_KEY, GRINDER_KEY]
+export { loadChecks, saveChecks }
 
 function readList<T extends { id: string }>(key: string): T[] {
   try {
@@ -19,10 +23,9 @@ function readList<T extends { id: string }>(key: string): T[] {
   } catch { return [] }
 }
 
-/* запись не должна ронять приложение: переполнение квоты, приватный режим и т.п. */
+/* запись не должна ронять приложение (переполнение квоты, приватный режим), но о сбое узнаёт экран */
 function writeJSON(key: string, value: unknown): void {
-  try { localStorage.setItem(key, JSON.stringify(value)) }
-  catch (e) { console.warn('storage: не удалось сохранить', key, e) }
+  safeWrite(localStorage, key, value)
 }
 
 /* помол раньше был строкой — старые записи приводим к актуальному виду при чтении */

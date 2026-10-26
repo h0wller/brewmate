@@ -10,7 +10,8 @@ import type { GrindStats, Segmentation } from './grind/analyze'
 import { adviseGrind, VERDICT_TEXT } from './grind/advise'
 import type { Taste } from './grind/advise'
 import { fitCurve } from './grind/curve'
-import { curvePoints, loadChecks, saveChecks } from './grind/store'
+import { curvePoints } from './grind/store'
+import type { GrindCheck } from './grind/store'
 import { uid } from './storage'
 import { AIError, loadAIConfig } from './ai/client'
 import { askGrindOpinion, ISSUE_TEXT, opinionAgrees } from './ai/grind'
@@ -39,8 +40,11 @@ async function loadToCanvas(file: File, canvas: HTMLCanvasElement): Promise<void
   if (revoke) URL.revokeObjectURL(revoke)
 }
 
-export function GrindHelp({ profile, onBack, onOpenGrinder }: {
+export function GrindHelp({ profile, checks, onAddCheck, onDeleteCheck, onBack, onOpenGrinder }: {
   profile: GrinderProfile
+  checks: GrindCheck[]
+  onAddCheck: (c: GrindCheck) => void
+  onDeleteCheck: (id: string) => void
   onBack: () => void
   onOpenGrinder: () => void
 }) {
@@ -59,7 +63,6 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
   const [opinion, setOpinion] = useState<GrindOpinion | null>(null)
   const [asking, setAsking] = useState(false)
   const [aiErr, setAiErr] = useState('')
-  const [checks, setChecks] = useState(loadChecks)
   const canvas = useRef<HTMLCanvasElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -150,11 +153,12 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
 
   const save = () => {
     if (!stats || setting === null) return
-    const next = [...checks, {
-      id: uid(), at: Date.now(), grinderId, setting, size, taste,
+    const now = Date.now()
+    onAddCheck({
+      id: uid(), at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste,
       d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
-    }]
-    saveChecks(next); setChecks(next); setSaved(true)
+    })
+    setSaved(true)
   }
 
   const askAI = async () => {
@@ -229,11 +233,26 @@ export function GrindHelp({ profile, onBack, onOpenGrinder }: {
           </button>
           {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
           {mine.length > 0 && (
-            <div className="small">
-              Замеров по этой кофемолке: {mine.length}. {curve
-                ? 'Шкала кофемолки уже выучена — совет будет точным.'
-                : 'Нужны замеры на двух разных настройках, чтобы выучить шкалу.'}
-            </div>
+            <>
+              <div className="small">
+                Замеров по этой кофемолке: {mine.length}. {curve
+                  ? 'Шкала кофемолки уже выучена — совет будет точным.'
+                  : 'Нужны замеры на двух разных настройках, чтобы выучить шкалу.'}
+              </div>
+              <div className="card" style={{ display: 'block', cursor: 'default' }}>
+                {[...mine].sort((a, b) => b.at - a.at).slice(0, 6).map(c => (
+                  <div key={c.id} className="row" style={{ marginBottom: 4 }}>
+                    <div className="grow">
+                      <div>настройка {c.setting} · ≈ {c.d50} мкм</div>
+                      <div className="meta">{new Date(c.at).toLocaleDateString('ru-RU')} · {SIZE_LABEL[c.size]}</div>
+                    </div>
+                    <button className="x" aria-label={`Удалить замер: настройка ${c.setting}, ${new Date(c.at).toLocaleDateString('ru-RU')}`}
+                      onClick={() => { if (window.confirm('Удалить этот замер? Шкала кофемолки пересчитается без него.')) onDeleteCheck(c.id) }}>×</button>
+                  </div>
+                ))}
+                {mine.length > 6 && <div className="small" style={{ margin: '6px 0 0' }}>Показаны 6 последних, остальные тоже учитываются.</div>}
+              </div>
+            </>
           )}
         </>
       )}
