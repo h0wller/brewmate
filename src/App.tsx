@@ -236,7 +236,7 @@ export default function App() {
           <LogView
             key={l.id}
             log={l}
-            sourceLog={l.trial ? logs.find(x => x.id === l.trial?.sourceLogId) : undefined}
+            sourceLog={l.trial ? logs.find(x => x.id === l.trial?.sourceLogId) : l.reference ? logs.find(x => x.id === l.reference?.sourceLogId) : undefined}
             history={logs}
             beans={beans}
             canRepeat={!!l.recipeId && recipes.some(r => r.id === l.recipeId)}
