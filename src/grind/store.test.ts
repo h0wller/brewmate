@@ -56,6 +56,7 @@ describe('замеры помола', () => {
       c({ id: '3', setting: 30, d50: 760, at: 2, grinderId: 'g' }),
       c({ id: '4', setting: 25, d50: 999, at: 3, grinderId: 'other' }),
       c({ id: 'sieve-optical-only', source: 'sieve', setting: undefined, grinderId: 'g', d50: 735, at: 8 }),
+      c({ id: 'legacy-fake-sieve', source: 'sieve', setting: 12, grinderId: 'g', d50: 735, n: 0, at: 9 }),
     ]
     const pts = curvePoints(list, 'g').sort((a, b) => a.setting - b.setting)
     expect(pts).toEqual([{ setting: 20, d50: 520 }, { setting: 30, d50: 760 }])
