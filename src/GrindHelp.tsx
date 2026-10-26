@@ -3,15 +3,17 @@ import type { PointerEvent } from 'react'
 import type { BrewLog, GrinderProfile } from './types'
 import { NumField } from './NumField'
 import { findGrinder } from './grinders/catalog'
-import { getGrinderScale, parseDialValue } from './grinders/presets'
+import { getGrinderScale, parseDialValue, presetSettingForSize } from './grinders/presets'
+import { settingFor as profileSettingFor } from './grinders/profile'
 import { tasteForGrind } from './brewlog/taste'
 import { flowSignal } from './grind/flow'
 import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
 import type { GrindSize } from './grinders/size'
-import { COINS, scaleFromPoints, segment, summarize } from './grind/analyze'
-import type { GrindStats, Segmentation } from './grind/analyze'
-import { adviseGrind, VERDICT_TEXT } from './grind/advise'
+import { COINS, detectCoinCircle, segment, summarize } from './grind/analyze'
+import type { Circle, GrindStats, Segmentation } from './grind/analyze'
+import { adviseGrind, expectedUmForSetting, VERDICT_TEXT } from './grind/advise'
 import type { Taste } from './grind/advise'
+import { midUm } from './grind/target'
 import { fitCurve } from './grind/curve'
 import { curvePoints } from './grind/store'
 import type { GrindCheck } from './grind/store'
@@ -22,10 +24,24 @@ import type { GrindOpinion } from './ai/grind'
 import { imageDataToJpeg } from './ai/image'
 
 const MAX_SIDE = 1600
-type Pt = { x: number; y: number }
 type Step = 'setup' | 'mark' | 'result'
 
-/* Фото → холст рабочего размера (с учётом поворота камеры). Дальше оно нигде не хранится и никуда не уходит. */
+/* Достаёт числовую настройку кофемолки для выбранного уровня из профиля или заводского пресета */
+function defaultSettingForSize(profile: GrinderProfile, size: GrindSize, logSetting?: string): number | null {
+  const scale = getGrinderScale(profile.grinder?.id)
+  if (logSetting) {
+    const parsed = parseDialValue(logSetting, scale)
+    if (parsed !== null) return parsed
+  }
+  const manual = profileSettingFor(profile, size)
+  if (manual) {
+    const parsed = parseDialValue(manual, scale)
+    if (parsed !== null) return parsed
+  }
+  const preset = presetSettingForSize(profile.grinder?.id, size, profile.redClix)
+  return preset ? parseDialValue(preset, scale) : null
+}
+
 async function loadToCanvas(file: File, canvas: HTMLCanvasElement): Promise<void> {
   let src: CanvasImageSource & { width: number; height: number }
   let revoke = ''
@@ -45,23 +61,24 @@ async function loadToCanvas(file: File, canvas: HTMLCanvasElement): Promise<void
 
 export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onBack, onOpenGrinder }: {
   profile: GrinderProfile
-  log?: BrewLog               // если открыто из записи журнала: настройка, уровень и вкус подставляются из неё
+  log?: BrewLog
   checks: GrindCheck[]
   onAddCheck: (c: GrindCheck) => void
   onDeleteCheck: (id: string) => void
   onBack: () => void
   onOpenGrinder: () => void
 }) {
+  const initialSize: GrindSize = log?.grind?.size ?? 'medium'
   const [step, setStep] = useState<Step>('setup')
-  const [setting, setSetting] = useState<number | null>(() => {
-    const raw = log?.grind?.setting
-    return raw ? parseDialValue(raw, getGrinderScale(log?.grind?.grinder?.id ?? profile.grinder?.id)) : null
-  })
-  const [size, setSize] = useState<GrindSize>(log?.grind?.size ?? 'medium')
+  const [size, setSize] = useState<GrindSize>(initialSize)
+  const [setting, setSetting] = useState<number | null>(() =>
+    defaultSettingForSize(profile, initialSize, log?.grind?.setting),
+  )
   const [taste, setTaste] = useState<Taste | undefined>(() => tasteForGrind(log?.taste))
   const flow = useMemo(() => (log ? flowSignal(log) : undefined), [log])
-  const [coinId, setCoinId] = useState<string>(COINS[0].id)
-  const [pts, setPts] = useState<Pt[]>([])
+  const [coinId, setCoinId] = useState<string>('rub2')
+  const [coinCircle, setCoinCircle] = useState<Circle | null>(null)
+  const [dragMode, setDragMode] = useState<'move' | 'resize' | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [stats, setStats] = useState<GrindStats | null>(null)
@@ -73,110 +90,195 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const [aiErr, setAiErr] = useState('')
   const canvas = useRef<HTMLCanvasElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const original = useRef<ImageData | null>(null)
 
   const grinderId = profile.grinder?.id
+  const grinderScale = getGrinderScale(grinderId)
   const grinderName = profile.grinder
     ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id) : undefined
 
   const curve = useMemo(() => fitCurve(curvePoints(checks, grinderId)), [checks, grinderId])
   const mine = useMemo(() => checks.filter(c => (c.grinderId ?? '') === (grinderId ?? '')), [checks, grinderId])
 
+  const pickSize = (nextSize: GrindSize) => {
+    setSize(nextSize)
+    const nextDefault = defaultSettingForSize(profile, nextSize)
+    if (nextDefault !== null) setSetting(nextDefault)
+  }
+
   const advice = useMemo(() => stats ? adviseGrind({
     stats, size, taste, flow, curve, grinderId, redClix: profile.redClix,
     currentSetting: setting ?? undefined,
-    decimals: setting !== null && !Number.isInteger(setting) ? 1 : 0,
-  }) : null, [stats, size, taste, flow, curve, grinderId, profile.redClix, setting])
+    decimals: grinderScale?.decimals ?? (setting !== null && !Number.isInteger(setting) ? 1 : 0),
+  }) : null, [stats, size, taste, flow, curve, grinderId, grinderScale, profile.redClix, setting])
 
-  /* рисуем: фото + отметки монеты (шаг 2) или найденные частицы (шаг 3) */
-  const draw = () => {
-    const cv = canvas.current; if (!cv || !cv.width) return
-    const ctx = cv.getContext('2d')!
-    if (step === 'mark') {
-      ctx.lineWidth = Math.max(2, cv.width / 400)
-      ctx.strokeStyle = '#ff9f0a'; ctx.fillStyle = '#ff9f0a'
-      for (const p of pts) { ctx.beginPath(); ctx.arc(p.x, p.y, ctx.lineWidth * 3, 0, 7); ctx.fill() }
-      if (pts.length === 2) {
-        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(pts[1].x, pts[1].y); ctx.stroke()
-        const r = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) / 2
-        ctx.beginPath(); ctx.arc((pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2, r, 0, 7); ctx.stroke()
-      }
-    } else if (step === 'result' && seg) {
-      ctx.lineWidth = 1; ctx.strokeStyle = '#30d158'
-      for (const p of seg.particles) {
-        ctx.beginPath(); ctx.arc(p.cx, p.cy, Math.max(1.5, Math.sqrt(p.area / Math.PI)), 0, 7); ctx.stroke()
-      }
-    }
-  }
-  const reload = async (file: File) => {
-    setErr(''); setBusy(true)
-    try {
-      await loadToCanvas(file, canvas.current!)
-      canvas.current!.dataset.src = '1'
-      setPts([]); setStats(null); setSeg(null); setSaved(false); setOpinion(null); setAiErr(''); setStep('mark')
-    } catch { setErr('Не удалось открыть фото. Попробуй снять ещё раз.') }
-    setBusy(false)
-  }
-
-  /* перерисовать чистое фото (после отметок/результата) придётся из исходника — поэтому храним копию */
-  const original = useRef<ImageData | null>(null)
-  const onFile = async (f?: File) => {
-    if (!f) return
-    await reload(f)
-    const cv = canvas.current!
-    original.current = cv.getContext('2d')!.getImageData(0, 0, cv.width, cv.height)
-  }
   const repaint = () => {
     const cv = canvas.current
     if (cv && original.current) cv.getContext('2d')!.putImageData(original.current, 0, 0)
   }
-  useEffect(() => { if (step !== 'setup') { repaint(); draw() } }, [pts, step, seg])
 
-  const tap = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (step !== 'mark') return
-    const cv = e.currentTarget, r = cv.getBoundingClientRect()
-    const p = { x: ((e.clientX - r.left) / r.width) * cv.width, y: ((e.clientY - r.top) / r.height) * cv.height }
-    setPts(prev => (prev.length >= 2 ? [p] : [...prev, p]))
+  const draw = () => {
+    const cv = canvas.current; if (!cv || !cv.width) return
+    const ctx = cv.getContext('2d')!
+    const lw = Math.max(2, cv.width / 350)
+
+    if (step === 'mark' && coinCircle) {
+      const { cx, cy, r } = coinCircle
+      // Затемняем внешний фон вокруг кольца для контраста
+      ctx.save()
+      ctx.strokeStyle = '#ff9f0a'
+      ctx.lineWidth = lw * 1.5
+      ctx.beginPath()
+      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.stroke()
+
+      // Центральное перекрестие
+      ctx.lineWidth = lw * 0.8
+      ctx.beginPath()
+      ctx.moveTo(cx - lw * 5, cy); ctx.lineTo(cx + lw * 5, cy)
+      ctx.moveTo(cx, cy - lw * 5); ctx.lineTo(cx, cy + lw * 5)
+      ctx.stroke()
+
+      // Ручка изменения радиуса справа на ободке
+      ctx.fillStyle = '#ff9f0a'
+      ctx.beginPath()
+      ctx.arc(cx + r, cy, lw * 4.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    } else if (step === 'result' && seg) {
+      // Отброшенные комки/горки рисуем жёлтым пунктиром, чтобы пользователь видел, что куча не сломала расчёт
+      ctx.save()
+      ctx.lineWidth = Math.max(1.5, lw * 0.8)
+      ctx.strokeStyle = 'rgba(255, 159, 10, 0.65)'
+      ctx.setLineDash([4, 4])
+      for (const c of seg.clumps) {
+        ctx.beginPath()
+        ctx.arc(c.cx, c.cy, Math.max(4, Math.sqrt(c.area / Math.PI)), 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      ctx.restore()
+
+      // Учтённые отдельные крупинки — зелёным
+      ctx.lineWidth = Math.max(1.2, lw * 0.6)
+      ctx.strokeStyle = '#30d158'
+      for (const p of seg.particles) {
+        ctx.beginPath()
+        ctx.arc(p.cx, p.cy, Math.max(1.5, Math.sqrt(p.area / Math.PI)), 0, Math.PI * 2)
+        ctx.stroke()
+      }
+    }
   }
+
+  useEffect(() => { if (step !== 'setup') { repaint(); draw() } }, [coinCircle, step, seg])
+
+  const onFile = async (f?: File) => {
+    if (!f) return
+    setErr(''); setBusy(true)
+    try {
+      const cv = canvas.current!
+      await loadToCanvas(f, cv)
+      const img = cv.getContext('2d')!.getImageData(0, 0, cv.width, cv.height)
+      original.current = img
+      // Автоматически находим монету на фото
+      setCoinCircle(detectCoinCircle(img))
+      setStats(null); setSeg(null); setSaved(false); setOpinion(null); setAiErr('')
+      setStep('mark')
+    } catch {
+      setErr('Не удалось открыть фото. Попробуй снять ещё раз.')
+    }
+    setBusy(false)
+  }
+
+  const canvasCoords = (e: PointerEvent<HTMLCanvasElement>) => {
+    const cv = e.currentTarget, rect = cv.getBoundingClientRect()
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * cv.width,
+      y: ((e.clientY - rect.top) / rect.height) * cv.height,
+    }
+  }
+
+  const onPointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (step !== 'mark' || !coinCircle) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const p = canvasCoords(e)
+    const dist = Math.hypot(p.x - coinCircle.cx, p.y - coinCircle.cy)
+    // Если нажали близко к ободку — меняем радиус, иначе двигаем центр кольца туда, куда нажали
+    if (Math.abs(dist - coinCircle.r) < Math.max(28, coinCircle.r * 0.28)) {
+      setDragMode('resize')
+    } else {
+      setDragMode('move')
+      setCoinCircle({ ...coinCircle, cx: p.x, cy: p.y })
+    }
+  }
+
+  const onPointerMove = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (step !== 'mark' || !dragMode || !coinCircle) return
+    const cv = e.currentTarget
+    const p = canvasCoords(e)
+    if (dragMode === 'move') {
+      setCoinCircle({
+        ...coinCircle,
+        cx: Math.max(20, Math.min(cv.width - 20, p.x)),
+        cy: Math.max(20, Math.min(cv.height - 20, p.y)),
+      })
+    } else {
+      const newR = Math.max(20, Math.min(Math.min(cv.width, cv.height) * 0.45, Math.hypot(p.x - coinCircle.cx, p.y - coinCircle.cy)))
+      setCoinCircle({ ...coinCircle, r: Math.round(newR) })
+    }
+  }
+
+  const onPointerUp = () => setDragMode(null)
 
   const measure = () => {
     const cv = canvas.current, img = original.current
-    if (!cv || !img || pts.length < 2) return
+    if (!cv || !img || !coinCircle) return
     const coin = COINS.find(c => c.id === coinId)!
-    const k = scaleFromPoints(pts[0], pts[1], coin.mm)
-    if (!k) { setErr('Отметь два края монеты.'); return }
+    const k = (coinCircle.r * 2) / coin.mm
+    if (!(k > 0)) { setErr('Подгони кольцо под монету.'); return }
     setErr(''); setBusy(true)
-    /* даём экрану перерисоваться, пока считаем */
     setTimeout(() => {
-      const circle = {
-        cx: (pts[0].x + pts[1].x) / 2, cy: (pts[0].y + pts[1].y) / 2,
-        r: (Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) / 2) * 1.12,
-      }
-      const s = segment(img, { exclude: [circle] })
-      const st = summarize(s, k)
+      // Ожидаемый размер в мкм от настройки кофемолки (или целевого уровня)
+      const expectedUm = expectedUmForSetting(grinderId, setting ?? undefined, profile.redClix, curve) ?? midUm(size)
+      // Максимальная площадь одной реальной крупинки кофе в пикселях (всё, что больше — слипшийся комок/куча)
+      const maxSingleUm = Math.max(1150, Math.min(2200, expectedUm * 2.35))
+      const maxRadiusPx = ((maxSingleUm / 1000) * k) / 2
+      const maxAreaPx = Math.max(25, Math.round(Math.PI * maxRadiusPx * maxRadiusPx))
+      const minRadiusPx = ((95 / 1000) * k) / 2
+      const minAreaPx = Math.max(4, Math.round(Math.PI * minRadiusPx * minRadiusPx))
+
+      const s = segment(img, {
+        exclude: [coinCircle],
+        minArea: minAreaPx,
+        maxArea: maxAreaPx,
+      })
+      const st = summarize(s, k, { expectedUm })
       setBusy(false)
-      if (!st) { setErr('Не нашёл частиц. Нужен тёмный помол на белой бумаге, при ровном свете.'); return }
+      if (!st) {
+        setErr('Не нашёл отдельных крупинок. Рассыпь щепотку помола свободнее на белом листе.')
+        return
+      }
       setSeg(s); setStats(st); setPxPerMm(k); setStep('result')
     }, 30)
   }
 
   const save = () => {
-    if (!stats || setting === null) return
+    if (!stats || !advice || setting === null) return
     const now = Date.now()
     onAddCheck({
       id: uid(), at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste, logId: log?.id,
-      d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
+      d10: Math.round(stats.d10), d50: Math.round(advice.effectiveD50), d90: Math.round(stats.d90), n: stats.n,
     })
     setSaved(true)
   }
 
   const askAI = async () => {
     const img = original.current
-    if (!img || !stats || asking) return
+    if (!img || !stats || !advice || asking) return
     setAsking(true); setAiErr('')
     try {
       const image = imageDataToJpeg(img)
       setOpinion(await askGrindOpinion(loadAIConfig(), image, {
-        size, d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
+        size, d10: Math.round(stats.d10), d50: Math.round(advice.effectiveD50), d90: Math.round(stats.d90), n: stats.n,
         ...(taste ? { taste } : {}),
       }))
     } catch (e) {
@@ -185,7 +287,9 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     setAsking(false)
   }
 
-  const retake = () => { setStep('setup'); setStats(null); setSeg(null); setSaved(false); setPts([]); setErr(''); setOpinion(null); setAiErr('') }
+  const retake = () => { setStep('setup'); setStats(null); setSeg(null); setSaved(false); setCoinCircle(null); setErr(''); setOpinion(null); setAiErr('') }
+
+  const maxRadius = canvas.current ? Math.round(Math.min(canvas.current.width, canvas.current.height) * 0.42) : 300
 
   return (
     <div>
@@ -196,27 +300,32 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
       {step === 'setup' && (
         <>
           <div className="small">
-            Сфоткай помол — приложение измерит частицы на телефоне и скажет, крупнее или мельче. Фото никуда не отправляется и не сохраняется.
+            Оценка отталкивается от твоей кофемолки и текущей настройки, а по фото проверяет реальные крупинки и отсекает слипшиеся комки.
           </div>
 
           <div className="card" onClick={onOpenGrinder}>
-            <div>🔧 {grinderName ?? 'Выбрать кофемолку'}</div>
-            <div className="small" style={{ margin: '4px 0 0' }}>
-              {grinderName ? 'Замеры привязываются к ней' : 'Без кофемолки приложение не выучит твою шкалу'}
+            <div className="grow">
+              <div>🔧 {grinderName ?? 'Выбрать кофемолку'}</div>
+              <div className="small" style={{ margin: '4px 0 0' }}>
+                {grinderName ? `Шкала ${grinderName} используется как базовый ориентир` : 'Выбери кофемолку, чтобы привязать оценку к её шкале'}
+              </div>
             </div>
+            <span style={{ color: '#4b8ef1', fontSize: 14 }}>изменить →</span>
           </div>
 
-          <div className="small">На какой настройке сейчас помол?</div>
-          <div className="row">
-            <NumField value={setting} onValue={setSetting} decimal label="Настройка кофемолки" placeholder="напр. 24" />
-            <span className="small" style={{ margin: 0 }}>число на шкале кофемолки</span>
-          </div>
-
-          <div className="small">Для чего этот помол?</div>
+          <div className="small">Для какого помола проверяем?</div>
           <div className="chips">
             {GRIND_SIZES.map(s => (
-              <button key={s} className={'chip' + (size === s ? ' on' : '')} onClick={() => setSize(s)}>{SIZE_LABEL[s]}</button>
+              <button key={s} className={'chip' + (size === s ? ' on' : '')} onClick={() => pickSize(s)}>{SIZE_LABEL[s]}</button>
             ))}
+          </div>
+
+          <div className="small">Какая настройка сейчас стоит на кофемолке?</div>
+          <div className="row">
+            <NumField value={setting} onValue={setSetting} decimal label="Настройка кофемолки" placeholder="напр. 5.5" />
+            <span className="small" style={{ margin: 0 }}>
+              {grinderScale?.unit ?? 'деление / клики'} (подставлено из {grinderName ?? 'рецепта'})
+            </span>
           </div>
 
           <div className="small">Как на вкус прошлая заварка? (необязательно)</div>
@@ -227,11 +336,10 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
           </div>
 
           <div className="card" style={{ marginTop: 16 }}>
-            <b>Как снять</b>
+            <b>Как снять для максимальной точности</b>
             <ol className="small" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-              <li>Тонкий слой помола на белой бумаге, частицы не слипаются (слегка постучи по листу).</li>
-              <li>Рядом положи монету и снимай сверху, ровный свет без бликов и теней.</li>
-              <li>Ближе — лучше: должны быть видны отдельные крупинки.</li>
+              <li>Не насыпай горку: возьми одну щепотку и разровняй пальцем по белой бумаге, чтобы крупинки лежали раздельно.</li>
+              <li>Рядом положи монету и сними строго сверху без резкой тени от телефона.</li>
             </ol>
           </div>
 
@@ -255,31 +363,49 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
                       <div>настройка {c.setting} · ≈ {c.d50} мкм</div>
                       <div className="meta">{new Date(c.at).toLocaleDateString('ru-RU')} · {SIZE_LABEL[c.size]}</div>
                     </div>
-                    <button className="x" aria-label={`Удалить замер: настройка ${c.setting}, ${new Date(c.at).toLocaleDateString('ru-RU')}`}
-                      onClick={() => { if (window.confirm('Удалить этот замер? Шкала кофемолки пересчитается без него.')) onDeleteCheck(c.id) }}>×</button>
+                    <button className="x" aria-label={`Удалить замер: настройка ${c.setting}`}
+                      onClick={() => { if (window.confirm('Удалить этот замер?')) onDeleteCheck(c.id) }}>×</button>
                   </div>
                 ))}
-                {mine.length > 6 && <div className="small" style={{ margin: '6px 0 0' }}>Показаны 6 последних, остальные тоже учитываются.</div>}
               </div>
             </>
           )}
         </>
       )}
 
-      <canvas ref={canvas} onPointerDown={tap}
-        style={{ width: '100%', borderRadius: 12, display: step === 'setup' ? 'none' : 'block', touchAction: 'manipulation', marginTop: 8 }} />
+      <canvas
+        ref={canvas}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{ width: '100%', borderRadius: 12, display: step === 'setup' ? 'none' : 'block', touchAction: 'none', marginTop: 8 }}
+      />
 
-      {step === 'mark' && (
+      {step === 'mark' && coinCircle && (
         <>
-          <div className="small">Нажми на два противоположных края монеты — так приложение узнает масштаб.</div>
+          <div className="small">
+            Перетащи оранжевое кольцо на монету и подгони его размер ползунком:
+          </div>
+          <div className="row" style={{ marginTop: 6 }}>
+            <label>Размер кольца</label>
+            <input
+              type="range"
+              min={20}
+              max={maxRadius}
+              value={Math.round(coinCircle.r)}
+              onChange={e => setCoinCircle({ ...coinCircle, r: Number(e.target.value) })}
+              style={{ flex: 1, padding: 0 }}
+            />
+          </div>
           <div className="chips">
             {COINS.map(c => (
               <button key={c.id} className={'chip' + (coinId === c.id ? ' on' : '')} onClick={() => setCoinId(c.id)}>{c.label}</button>
             ))}
           </div>
           {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
-          <button className="btn" style={{ marginTop: 12 }} disabled={pts.length < 2 || busy} onClick={measure}>
-            {busy ? 'Считаю…' : 'Измерить'}
+          <button className="btn" style={{ marginTop: 12 }} disabled={busy} onClick={measure}>
+            {busy ? 'Считаю…' : 'Измерить помол'}
           </button>
           <button className="btn secondary" style={{ marginTop: 8 }} onClick={retake}>Переснять</button>
         </>
@@ -287,31 +413,35 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
 
       {step === 'result' && stats && advice && (
         <>
-          <div className="card" style={{ marginTop: 12 }}>
+          <div className="card" style={{ marginTop: 12, display: 'block', cursor: 'default' }}>
             <div style={{ fontSize: 18, fontWeight: 600 }}>
               {VERDICT_TEXT[advice.verdict]}{advice.offPct > 0 ? ` (на ~${advice.offPct}%)` : ''}
             </div>
             {advice.suggested !== undefined && (
-              <div style={{ marginTop: 6 }}>
-                Поставь ≈ <b>{advice.suggested}</b>
-                <span className="small"> {advice.basis === 'curve' ? (advice.reliable ? 'по твоей шкале' : 'по твоей шкале, предварительно') : 'по усреднённой шкале модели'}</span>
+              <div style={{ marginTop: 6, fontSize: 16 }}>
+                Поставь ≈ <b>{advice.suggested} {grinderScale?.unit ?? ''}</b>
+                {setting !== null && <span className="small"> (сейчас {setting})</span>}
               </div>
             )}
             <div className="small" style={{ margin: '8px 0 0' }}>
-              Типичный размер частиц ≈ {Math.round(stats.d50)} мкм (цель для «{SIZE_LABEL[size]}»: {advice.target[0]}–{advice.target[1]}).
-              Разброс: {stats.span < 0.6 ? 'небольшой' : stats.span < 0.9 ? 'средний' : 'большой'}. Посчитано частиц: {stats.n}.
+              Оценка помола ≈ <b>{Math.round(advice.effectiveD50)} мкм</b> (цель для «{SIZE_LABEL[size]}»: {advice.target[0]}–{advice.target[1]} мкм).
+              {advice.expectedD50 !== undefined && (
+                <> Ожидание для настройки {setting}: ≈ {Math.round(advice.expectedD50)} мкм.</>
+              )}
+              {' '}Отдельных крупинок учтено: {stats.n}
+              {seg && seg.clumps.length > 0 ? ` (слипшихся комков отброшено: ${seg.clumps.length})` : ''}.
             </div>
           </div>
           {advice.notes.map((n, i) => <div key={i} className="small">• {n}</div>)}
-          <div className="small">Зелёные кружки — найденные частицы. Если они лежат мимо крупинок, переснимай при другом освещении.</div>
-          {setting === null && <div className="small">Укажи текущую настройку, чтобы сохранить замер и выучить шкалу кофемолки.</div>}
+          <div className="small">
+            🟢 Зелёные кружки — отдельные крупинки кофе. 🟠 Жёлтый пунктир — слипшиеся комки/горка (исключены из расчёта).
+          </div>
           <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
             <b>Второе мнение ИИ</b> <span className="small" style={{ margin: 0 }}>необязательно</span>
             {!opinion && (
               <>
                 <div className="small" style={{ margin: '6px 0' }}>
-                  ИИ посмотрит снимок на мелкую пыль, комки и неравномерность. Размеры он не измеряет — берёт твои цифры.
-                  {loadAIConfig()?.apiKey ? 'Фото уйдёт напрямую выбранному AI-сервису (твой ключ) и нигде не сохраняется.' : 'Фото уйдёт на сервер BrewMate и AI-провайдеру и нигде не сохраняется; бесплатных запросов в день немного.'}
+                  ИИ посмотрит снимок на мелкую пыль, комки и неравномерность.
                 </div>
                 <button className="btn secondary" disabled={asking} onClick={askAI}>{asking ? 'Смотрю…' : 'Спросить ИИ'}</button>
               </>
@@ -325,7 +455,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
                 )}
                 {opinion.verdict === 'unsure' && <div className="small" style={{ margin: '6px 0 0' }}>По этому снимку ИИ судить не берётся.</div>}
                 {opinionAgrees(opinion, advice.verdict) === false && (
-                  <div className="small" style={{ margin: '6px 0 0' }}>ИИ и замер расходятся. Замеру можно верить больше: он считает частицы, а ИИ только смотрит.</div>
+                  <div className="small" style={{ margin: '6px 0 0' }}>ИИ и замер расходятся.</div>
                 )}
               </div>
             )}
@@ -334,7 +464,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
           <button className="btn" style={{ marginTop: 8 }} disabled={setting === null || saved} onClick={save}>
             {saved ? 'Замер сохранён' : 'Сохранить замер'}
           </button>
-          <button className="btn secondary" style={{ marginTop: 8 }} onClick={retake}>Переснять после правки</button>
+          <button className="btn secondary" style={{ marginTop: 8 }} onClick={retake}>Переснять</button>
           <div className="small">Масштаб: {pxPerMm.toFixed(1)} пикс/мм.</div>
         </>
       )}
