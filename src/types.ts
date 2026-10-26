@@ -27,7 +27,13 @@ export interface TrialMetadata {
   baselineTaste: BrewTaste
 }
 
+export interface HistoricalReference {
+  sourceLogId: string
+  sourceRating: number
+}
+
 export interface Recipe {
+  reference?: HistoricalReference
   trial?: TrialMetadata
   id: string; title: string; method: string;
   doseG: number; waterG: number; tempC: number; grind?: Grind;
@@ -41,6 +47,7 @@ export interface WeightSample { t: number; g: number }
 /* Запись в журнале завариваний. Рецепт и зерно скопированы «снимком»: рецепт
    можно потом изменить или удалить, а запись о том, что было сварено, остаётся. */
 export interface BrewLog {
+  reference?: HistoricalReference
   trial?: TrialMetadata
   id: string
   recipeId?: string
@@ -67,7 +74,7 @@ export interface BrewLog {
 /* Что таймер передаёт приложению при «Записать в журнал»; остальное (id, даты) добавляет App */
 export type LogDraft = Pick<BrewLog,
   'recipeId' | 'title' | 'method' | 'doseG' | 'waterG' | 'tempC' | 'grind' | 'steps' |
-  'durationS' | 'finalG' | 'curve' | 'trial'>
+  'durationS' | 'finalG' | 'curve' | 'trial' | 'reference'>
 
 export interface BeanProfile {
   id: string
