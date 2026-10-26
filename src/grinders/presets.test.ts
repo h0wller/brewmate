@@ -13,6 +13,7 @@ import {
 import { factoryCalibration, smartSettingFor, withGrinder, withRedClix, hasCalibration } from './profile'
 import { CATALOG } from './catalog'
 import type { GrinderProfile } from '../types'
+import type { PhotoGrindProfile } from '../grind/store'
 
 describe('presetSettingByCoarseness', () => {
   it('Comandante C40 точные клики и интерполяция', () => {
@@ -110,6 +111,31 @@ describe('smartSettingFor', () => {
     expect(smartSettingFor(profile, 'medium', 3.0)).toBeUndefined()
     expect(smartSettingFor({ grinder: { id: 'comandante-c40' }, calibration: {} }, 'medium_coarse', 4)).toBeUndefined()
     expect(smartSettingFor({ grinder: { id: 'comandante-c40' }, calibration: factoryCalibration('comandante-c40') }, 'medium_coarse', 4)).toBeUndefined()
+  })
+})
+
+describe('smartSettingFor: профиль по фото', () => {
+  const photo: PhotoGrindProfile = {
+    grinderId: 'comandante-c40', size: 'medium_fine', setting: 25,
+    measuredSetting: 20, d50: 700, updatedAt: 10, checkId: 'check-1',
+  }
+
+  it('использует сохранённую настройку по фото, если ручной нет или она ориентировочная', () => {
+    const profile: GrinderProfile = { grinder: { id: 'comandante-c40' }, calibration: {} }
+    expect(smartSettingFor(profile, 'medium_fine', 2, [photo])).toBe('25 кл.')
+    expect(smartSettingFor({ ...profile, calibration: { medium_fine: '≈ 24 кл.' } }, 'medium_fine', 2, [photo])).toBe('25 кл.')
+  })
+
+  it('ручная настройка имеет приоритет над фото', () => {
+    const profile: GrinderProfile = { grinder: { id: 'comandante-c40' }, calibration: { medium_fine: '22 клика' } }
+    expect(smartSettingFor(profile, 'medium_fine', 2, [photo])).toBe('22 клика')
+  })
+
+  it('не использует профиль другой кофемолки или уровня и не подставляет заводской пресет', () => {
+    const profile: GrinderProfile = { grinder: { id: 'comandante-c40' }, calibration: {} }
+    expect(smartSettingFor(profile, 'medium_fine', 2, [{ ...photo, grinderId: 'timemore-c3' }])).toBeUndefined()
+    expect(smartSettingFor(profile, 'medium', 3, [photo])).toBeUndefined()
+    expect(smartSettingFor(profile, 'medium', 3)).toBeUndefined()
   })
 })
 
