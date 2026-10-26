@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildPayload, emptyData, mergeData, sanitizeData } from './merge'
-import type { GrindCheck } from '../grind/store'
+import type { GrindCheck, PhotoGrindProfile } from '../grind/store'
+import type { DialInProfile } from '../beans/dialInProfile'
 import type { Recipe } from '../types'
 
 const recipe = (id: string, updatedAt?: number, title = id): Recipe => ({
@@ -114,6 +115,8 @@ describe('sanitizeData', () => {
     expect(d.deleted).toEqual({})
     expect(d.logs).toEqual([])
     expect(d.recipes).toHaveLength(1)
+    expect(d.dialInProfiles).toEqual([])
+    expect(d.photoProfiles).toEqual([])
   })
 })
 
@@ -145,6 +148,52 @@ describe('замеры помола в слиянии', () => {
     expect(d.grindChecks).toHaveLength(1)
     expect(d.grindChecks[0].id).toBe('a')
     expect([d.grindChecks[0].createdAt, d.grindChecks[0].updatedAt]).toEqual([7, 7])
+  })
+})
+
+describe('профили кофемолки в синхронизации', () => {
+  const dialIn = (id: string, savedAt: number, extra: Partial<DialInProfile> = {}): DialInProfile => ({
+    id, grinderId: 'c40', method: 'moccamaster', beanId: 'ethiopia', roastDate: '2026-10-01',
+    sourceLogId: id, doseG: 20, waterG: 320, tempC: 93, steps: [{ duration: 240, pourTo: 320 }],
+    positiveTrials: 3, totalTrials: 3, savedAt, ...extra,
+  })
+  const photo = (setting: number, updatedAt: number, extra: Partial<PhotoGrindProfile> = {}): PhotoGrindProfile => ({
+    grinderId: 'c40', size: 'medium', setting, measuredSetting: setting, d50: 800, updatedAt, checkId: String(updatedAt), ...extra,
+  })
+
+  it('dial-in объединяется по естественному ключу, более свежий savedAt побеждает', () => {
+    const merged = mergeData(
+      data({ dialInProfiles: [dialIn('local-old', 10)] }),
+      data({ dialInProfiles: [dialIn('remote-new', 20)] }),
+    )
+    expect(merged.dialInProfiles).toHaveLength(1)
+    expect(merged.dialInProfiles[0].id).toBe('remote-new')
+  })
+
+  it('учитывает tombstone для dial-in профиля', () => {
+    const merged = mergeData(
+      data({ dialInProfiles: [dialIn('removed', 10)], deleted: { removed: 15 } }),
+      data({ dialInProfiles: [dialIn('removed', 10)] }),
+    )
+    expect(merged.dialInProfiles).toEqual([])
+  })
+
+  it('photo-профиль объединяется по grinderId + size, побеждает updatedAt', () => {
+    const merged = mergeData(
+      data({ photoProfiles: [photo(12, 10), photo(15, 12, { size: 'coarse' })] }),
+      data({ photoProfiles: [photo(18, 20), photo(11, 5, { size: 'coarse' })] }),
+    )
+    expect(merged.photoProfiles).toHaveLength(2)
+    expect(merged.photoProfiles.find(p => p.size === 'medium')?.setting).toBe(18)
+    expect(merged.photoProfiles.find(p => p.size === 'coarse')?.setting).toBe(15)
+  })
+
+  it('старый сервер без новых полей сохраняет остальное и даёт пустые профили', () => {
+    const local = sanitizeData({ recipes: [recipe('legacy')] })
+    const merged = mergeData(local, sanitizeData({ recipes: [], sessions: [], beans: [] }))
+    expect(merged.recipes.map(r => r.id)).toEqual(['legacy'])
+    expect(merged.dialInProfiles).toEqual([])
+    expect(merged.photoProfiles).toEqual([])
   })
 })
 
