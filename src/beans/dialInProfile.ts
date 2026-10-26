@@ -46,8 +46,8 @@ export function sanitizeDialInProfiles(raw: unknown): DialInProfile[] {
 }
 
 export function upsertDialInProfile(list: DialInProfile[], profile: DialInProfile): DialInProfile[] {
-  // One active promoted snapshot per grinder × brewer. Provenance remains explicit.
-  return [...list.filter(p => !(p.grinderId === profile.grinderId && p.method === profile.method)), profile].slice(-100)
+  // Keep separate snapshots for different beans/roast dates on the same grinder and brewer.
+  return [...list.filter(p => !(p.grinderId === profile.grinderId && p.method === profile.method && p.beanId === profile.beanId && p.roastDate === profile.roastDate)), profile].slice(-100)
 }
 
 export function profileFromConfirmedLog(
@@ -99,7 +99,9 @@ export function findDialInProfile(
   list: DialInProfile[],
   grinderId: string | undefined,
   method: string,
+  beanId?: string,
+  roastDate?: string,
 ): DialInProfile | undefined {
   if (!grinderId) return undefined
-  return list.find(p => p.grinderId === grinderId && p.method === method)
+  return list.find(p => p.grinderId === grinderId && p.method === method && p.beanId === beanId && p.roastDate === roastDate)
 }
