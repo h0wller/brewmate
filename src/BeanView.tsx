@@ -289,75 +289,76 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
             Сделать рецепт → в таймер
           </button>
           {savedDialIn && (
-        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
-          <b>Сохранённый профиль · {METHODS[method!].label}</b>
-          <div className="small">
-            {savedDialIn.positiveTrials}/{savedDialIn.totalTrials} положительных проб · зерно: {savedDialIn.beanName ?? savedDialIn.beanId ?? 'не указано'} · обжарка: {savedDialIn.roastDate ?? 'не указана'}.
-          </div>
-          <div>{savedDialIn.doseG} г / {savedDialIn.waterG} г · {savedDialIn.tempC} °C
-            {savedDialIn.grindSize ? ` · ${SIZE_LABEL[savedDialIn.grindSize] ?? savedDialIn.grindSize}` : ''}
-            {savedDialIn.grinderSetting ? ` · ${savedDialIn.grinderSetting}` : ''}
-          </div>
-          {applicableDialIn ? (
-            <button className="btn" onClick={() => {
-              const scale = doseOk && dose !== null ? dose / applicableDialIn.doseG : 1
-              onMakeRecipe({
-                id: uid(),
-                title: `${bean.name || 'Зерно'} · личный подтверждённый профиль`,
-                method: applicableDialIn.method,
-                beanId: bean.id,
-                beanRoastDate: bean.roastDate,
-                doseG: doseOk && dose !== null ? dose : applicableDialIn.doseG,
-                waterG: Math.round(applicableDialIn.waterG * scale),
-                tempC: applicableDialIn.tempC,
-                grind: profile.grinder ? {
-                  grinder: profile.grinder,
-                  size: applicableDialIn.grindSize as GrindSize | undefined,
-                  setting: applicableDialIn.grinderSetting,
-                } : undefined,
-                steps: applicableDialIn.steps.map(step => ({ ...step, pourTo: Math.round(step.pourTo * scale) })),
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-              })
-            }}>Использовать этот профиль для рецепта</button>
-          ) : (
-            <div className="small">Профиль сохранён для другой партии или даты обжарки. Он не будет автоматически применён к этому зерну.</div>
+            <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+              <b>Сохранённый профиль · {METHODS[method!].label}</b>
+              <div className="small">
+                {savedDialIn.positiveTrials}/{savedDialIn.totalTrials} положительных проб · зерно: {savedDialIn.beanName ?? savedDialIn.beanId ?? 'не указано'} · обжарка: {savedDialIn.roastDate ?? 'не указана'}.
+              </div>
+              <div>
+                {savedDialIn.doseG} г / {savedDialIn.waterG} г · {savedDialIn.tempC} °C
+                {savedDialIn.grindSize ? ` · ${SIZE_LABEL[savedDialIn.grindSize] ?? savedDialIn.grindSize}` : ''}
+                {savedDialIn.grinderSetting ? ` · ${savedDialIn.grinderSetting}` : ''}
+              </div>
+              {applicableDialIn ? (
+                <button className="btn" onClick={() => {
+                  const scale = doseOk && dose !== null ? dose / applicableDialIn.doseG : 1
+                  onMakeRecipe({
+                    id: uid(),
+                    title: `${bean.name || 'Зерно'} · личный подтверждённый профиль`,
+                    method: applicableDialIn.method,
+                    beanId: bean.id,
+                    beanRoastDate: bean.roastDate,
+                    doseG: doseOk && dose !== null ? dose : applicableDialIn.doseG,
+                    waterG: Math.round(applicableDialIn.waterG * scale),
+                    tempC: applicableDialIn.tempC,
+                    grind: profile.grinder ? {
+                      grinder: profile.grinder,
+                      size: applicableDialIn.grindSize as GrindSize | undefined,
+                      setting: applicableDialIn.grinderSetting,
+                    } : undefined,
+                    steps: applicableDialIn.steps.map(step => ({ ...step, pourTo: Math.round(step.pourTo * scale) })),
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  })
+                }}>Использовать этот профиль для рецепта</button>
+              ) : (
+                <div className="small">Профиль сохранён для другой партии или даты обжарки. Он не будет автоматически применён к этому зерну.</div>
+              )}
+              <div className="small">Профиль хранится отдельно от ручной калибровки и не переносит настройку на другие кофемолки.</div>
+            </div>
           )}
-          <div className="small">Профиль хранится отдельно от ручной калибровки и не переносит настройку на другие кофемолки.</div>
-          </div>
-      )}
 
-      {historyEvidence && historyEvidence.brews > 0 && (
-        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
-          <b>Данные твоих завариваний</b>
-          <div className="small">
-            Сопоставимых чашек: {historyEvidence.brews}
-            {historyEvidence.roastDate ? ` · обжарка ${historyEvidence.roastDate}` : ' · дата обжарки не указана'}.
-            Учитываются только то же зерно, метод, кофемолка и совпадающая дата обжарки.
-          </div>
-          <div>
-            {historyEvidence.meanRatio !== undefined ? `Среднее соотношение: 1:${historyEvidence.meanRatio}` : ''}
-            {historyEvidence.ratioRange ? ` (наблюдалось 1:${historyEvidence.ratioRange[0].toFixed(1)}–1:${historyEvidence.ratioRange[1].toFixed(1)})` : ''}
-            {historyEvidence.medianTempC !== undefined ? ` · медианная температура: ${historyEvidence.medianTempC} °C` : ''}
-            {historyEvidence.tempRange ? ` (диапазон ${historyEvidence.tempRange[0]}–${historyEvidence.tempRange[1]} °C)` : ''}
-          </div>
-          <div className="small">
-            <b>{historyEvidence.confidence === 'repeatable' ? 'Повторяющийся положительный сигнал' : historyEvidence.confidence === 'early-signal' ? 'Предварительный сигнал' : 'Пока нет надёжного сигнала'}</b>
-            {' · '}{historyEvidence.confidenceNote}
-          </div>
-          <div className="small">
-            {historyEvidence.ratedBrews
-              ? `Средняя оценка: ${historyEvidence.meanRating}/5 по ${historyEvidence.ratedBrews} чашкам`
-              : 'Оценки чашек пока не записаны'}
-            { ` · отмечен баланс: ${historyEvidence.balancedBrews}` }
-          </div>
-          {historyEvidence.grindSizes.length > 0 && (
-            <div className="small">Уровни помола в истории: {historyEvidence.grindSizes.map(size => SIZE_LABEL[size as keyof typeof SIZE_LABEL] ?? size).join(', ')}. Это записи шкалы крупности, а не конвертация кликов между кофемолками.</div>
+          {historyEvidence && historyEvidence.brews > 0 && (
+            <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+              <b>Данные твоих завариваний</b>
+              <div className="small">
+                Сопоставимых чашек: {historyEvidence.brews}
+                {historyEvidence.roastDate ? ` · обжарка ${historyEvidence.roastDate}` : ' · дата обжарки не указана'}.
+                Учитываются только то же зерно, метод, кофемолка и совпадающая дата обжарки.
+              </div>
+              <div>
+                {historyEvidence.meanRatio !== undefined ? `Среднее соотношение: 1:${historyEvidence.meanRatio}` : ''}
+                {historyEvidence.ratioRange ? ` (наблюдалось 1:${historyEvidence.ratioRange[0].toFixed(1)}–1:${historyEvidence.ratioRange[1].toFixed(1)})` : ''}
+                {historyEvidence.medianTempC !== undefined ? ` · медианная температура: ${historyEvidence.medianTempC} °C` : ''}
+                {historyEvidence.tempRange ? ` (диапазон ${historyEvidence.tempRange[0]}–${historyEvidence.tempRange[1]} °C)` : ''}
+              </div>
+              <div className="small">
+                <b>{historyEvidence.confidence === 'repeatable' ? 'Повторяющийся положительный сигнал' : historyEvidence.confidence === 'early-signal' ? 'Предварительный сигнал' : 'Пока нет надёжного сигнала'}</b>
+                {' · '}{historyEvidence.confidenceNote}
+              </div>
+              <div className="small">
+                {historyEvidence.ratedBrews
+                  ? `Средняя оценка: ${historyEvidence.meanRating}/5 по ${historyEvidence.ratedBrews} чашкам`
+                  : 'Оценки чашек пока не записаны'}
+                {` · отмечен баланс: ${historyEvidence.balancedBrews}`}
+              </div>
+              {historyEvidence.grindSizes.length > 0 && (
+                <div className="small">Уровни помола в истории: {historyEvidence.grindSizes.map(size => SIZE_LABEL[size as keyof typeof SIZE_LABEL] ?? size).join(', ')}. Это записи шкалы крупности, а не конвертация кликов между кофемолками.</div>
+              )}
+            </div>
           )}
-          </div>
-      )}
 
-      {historicalRecipe && (
+          {historicalRecipe && (
             <div className="tip" style={{ marginTop: 10 }}>
               <b>Есть удачная чашка из истории</b>
               <div>Для этого зерна и метода есть запись с оценкой не ниже 4/5 и отмеченным балансом. Можно использовать её как альтернативную стартовую точку.</div>
@@ -365,7 +366,6 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
               <button className="btn secondary" onClick={() => onMakeRecipe(historicalRecipe)}>Использовать исторический рецепт</button>
             </div>
           )}
-          </div>
       ) : (
         <div className="small">Выбери метод и дозу — покажу помол, температуру и воду.</div>
       )}
