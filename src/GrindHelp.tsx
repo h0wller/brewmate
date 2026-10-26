@@ -15,8 +15,8 @@ import { adviseGrind, expectedUmForSetting, VERDICT_TEXT } from './grind/advise'
 import type { Taste } from './grind/advise'
 import { midUm } from './grind/target'
 import { fitCurve } from './grind/curve'
-import { curvePoints } from './grind/store'
-import type { GrindCheck } from './grind/store'
+import { curvePoints, photoProfileFor, savePhotoProfile } from './grind/store'
+import type { GrindCheck, PhotoGrindProfile } from './grind/store'
 import { uid } from './storage'
 import { AIError, loadAIConfig } from './ai/client'
 import { askGrindOpinion, ISSUE_TEXT, opinionAgrees } from './ai/grind'
@@ -85,6 +85,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const [seg, setSeg] = useState<Segmentation | null>(null)
   const [pxPerMm, setPxPerMm] = useState(0)
   const [saved, setSaved] = useState(false)
+  const [photoProfile, setPhotoProfile] = useState<PhotoGrindProfile | undefined>(() => photoProfileFor(profile.grinder?.id, initialSize))
   const [opinion, setOpinion] = useState<GrindOpinion | null>(null)
   const [asking, setAsking] = useState(false)
   const [aiErr, setAiErr] = useState('')
@@ -102,6 +103,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
 
   const pickSize = (nextSize: GrindSize) => {
     setSize(nextSize)
+    setPhotoProfile(photoProfileFor(profile.grinder?.id, nextSize))
     const nextDefault = defaultSettingForSize(profile, nextSize)
     if (nextDefault !== null) setSetting(nextDefault)
   }
@@ -264,10 +266,16 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const save = () => {
     if (!stats || !advice || setting === null) return
     const now = Date.now()
+    const checkId = uid()
     onAddCheck({
-      id: uid(), at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste, logId: log?.id,
+      id: checkId, at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste, logId: log?.id,
       d10: Math.round(stats.d10), d50: Math.round(advice.effectiveD50), d90: Math.round(stats.d90), n: stats.n,
     })
+    if (grinderId) {
+      const nextProfile = { grinderId, size, setting: advice.suggested ?? setting, d50: Math.round(advice.effectiveD50), updatedAt: now, checkId }
+      savePhotoProfile(nextProfile)
+      setPhotoProfile(nextProfile)
+    }
     setSaved(true)
   }
 
@@ -319,6 +327,16 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
               <button key={s} className={'chip' + (size === s ? ' on' : '')} onClick={() => pickSize(s)}>{SIZE_LABEL[s]}</button>
             ))}
           </div>
+
+          {photoProfile && (
+            <div className="card" style={{ display: 'block', cursor: 'default' }}>
+              <b>Последний профиль по фото · {SIZE_LABEL[size]}</b>
+              <div className="small" style={{ margin: '4px 0 0' }}>
+                {photoProfile.setting} {grinderScale?.unit ?? 'дел.'} · D50 ≈ {photoProfile.d50} мкм · {new Date(photoProfile.updatedAt).toLocaleDateString('ru-RU')}
+              </div>
+              <div className="small" style={{ margin: '4px 0 0' }}>Отдельный ориентир для этой кофемолки. Ручная калибровка и заводские настройки не изменены.</div>
+            </div>
+          )}
 
           <div className="small">Какая настройка сейчас стоит на кофемолке?</div>
           <div className="row">
