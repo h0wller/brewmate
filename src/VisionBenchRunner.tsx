@@ -89,7 +89,7 @@ export function VisionBenchRunner({ record, onComplete }: { record: VisionBenchR
         if (oldIndex >= 0) runs.splice(oldIndex, 1)
         runs.push(nextRun)
         await saveVisionBenchRecord({ ...record, benchmarkRuns: [...runs], updatedAt: Date.now() })
-        if (nextRun.error && (nextRun.error.includes('лимит') || nextRun.error.includes('недоступны'))) break
+        if (nextRun.error && nextRun.error.includes('лимит')) break
       }
       await onComplete()
       setMessage('Готово. Проверено первое фото: ' + photo.name + '. Результаты сохранены локально.')
