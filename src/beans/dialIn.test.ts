@@ -42,6 +42,7 @@ describe('makeTrialRecipe', () => {
     const source = log({ taste: 'sour' })
     const trial = makeTrialRecipe(source)!
     expect(trial.id).not.toBe(source.id)
+    expect(trial.trial).toEqual({ sourceLogId: source.id, variable: 'grind', baselineTaste: 'sour' })
     expect(trial.grind?.size).toBe('medium')
     expect(trial.grind?.setting).toBeUndefined()
     expect(source.grind?.setting).toBe('28 clicks')
@@ -53,6 +54,7 @@ describe('makeTrialRecipe', () => {
     const source = log({ taste: 'weak' })
     const trial = makeTrialRecipe(source)!
     expect(trial.doseG).toBe(21)
+    expect(trial.trial).toEqual({ sourceLogId: source.id, variable: 'dose', baselineTaste: 'weak' })
     expect(trial.waterG).toBe(source.waterG)
     expect(trial.grind).toEqual(source.grind)
   })
