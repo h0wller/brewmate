@@ -12,6 +12,9 @@ describe('замеры помола', () => {
     expect(sanitizeChecks([null, 1, { id: 'x' }, c({ d50: -1 }), c({ size: 'huge' as never }), c({ d50: NaN })])).toEqual([])
     expect(sanitizeChecks([c({}), { ...c({ id: 'b' }), taste: 'weird' }]).map(x => x.taste)).toEqual([undefined, undefined])
   })
+  it('сохраняет только известные источники замера и не ломает старые записи', () => {
+    expect(sanitizeChecks([c({ source: 'sieve' }), c({ id: 'photo', source: 'photo' }), c({ id: 'bad', source: 'other' as never })]).map(x => x.source)).toEqual(['sieve', 'photo', undefined])
+  })
   it('точки кривой: только своя кофемолка, по настройке — самый свежий замер', () => {
     const list = [
       c({ id: '1', setting: 20, d50: 500, at: 1, grinderId: 'g' }),
