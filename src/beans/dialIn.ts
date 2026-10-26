@@ -171,6 +171,111 @@ export function makeTrialRecipe(log: BrewLog): Recipe | undefined {
   return base
 }
 
+export interface NextExperimentPlan {
+  kind: 'adjust' | 'repeat' | 'stop'
+  title: string
+  reason: string
+  recipe?: Recipe
+}
+
+/**
+ * Choose a next step from recorded sensory feedback. This is deliberately
+ * conservative: repeat a balanced experimental cup before promoting it, change
+ * one variable for a non-balanced cup, and avoid suggesting an already-tried
+ * adjustment as if it were new.
+ */
+export function planNextExperiment(log: BrewLog, history: BrewLog[]): NextExperimentPlan {
+  if (!log.taste) return {
+    kind: 'stop',
+    title: 'Сначала оцени вкус',
+    reason: 'Без сенсорной отметки нельзя обоснованно выбирать следующий эксперимент.',
+  }
+
+  const rootId = log.trial?.sourceLogId ?? log.id
+  const root = history.find(item => item.id === rootId) ?? log
+  if (log.taste === 'balanced') {
+    const recipe: Recipe = {
+      id: uid(),
+      title: `Повтор для проверки · ${log.title}`,
+      method: log.method,
+      beanId: log.beanId,
+      beanRoastDate: log.beanRoastDate,
+      doseG: log.doseG,
+      waterG: log.waterG,
+      tempC: log.tempC,
+      grind: log.grind ? { ...log.grind } : undefined,
+      steps: log.steps.map(step => ({ ...step })),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      trial: {
+        sourceLogId: rootId,
+        variable: log.trial?.variable ?? 'grind',
+        baselineTaste: log.trial?.baselineTaste ?? root.taste ?? 'balanced',
+      },
+    }
+    return {
+      kind: 'repeat',
+      title: 'Повторить без изменений',
+      reason: 'Баланс — положительный сигнал, но не доказательство. Повтори ту же настройку и оцени вкус до изменения параметров.',
+      recipe,
+    }
+  }
+
+  const candidate = makeTrialRecipe(log)
+  if (!candidate) return {
+    kind: 'stop',
+    title: 'Не менять рецепт вслепую',
+    reason: 'Для текущей отметки нет безопасного однофакторного шага. Проверь контекст и запиши более точную сенсорную заметку.',
+  }
+
+  candidate.trial = {
+    sourceLogId: rootId,
+    variable: log.taste === 'weak' ? 'dose' : 'grind',
+    baselineTaste: log.trial?.baselineTaste ?? root.taste ?? log.taste,
+  }
+
+  const candidateSignature = trialSignature({
+    ...log,
+    ...candidate,
+    id: '__candidate__',
+    trial: candidate.trial,
+    startedAt: 0,
+    durationS: 0,
+    createdAt: candidate.createdAt,
+  } as BrewLog)
+  const alreadyTried = history.some(item =>
+    item.id !== log.id &&
+    item.trial?.sourceLogId === rootId &&
+    trialSignature(item) === candidateSignature,
+  )
+  if (alreadyTried) return {
+    kind: 'repeat',
+    title: 'Повторить проверенный шаг',
+    reason: 'Такой вариант уже пробовали. Вместо повторного изменения параметров повтори текущую настройку, чтобы проверить воспроизводимость.',
+    recipe: {
+      ...candidate,
+      title: `Повтор для проверки · ${log.title}`,
+      doseG: log.doseG,
+      waterG: log.waterG,
+      tempC: log.tempC,
+      grind: log.grind ? { ...log.grind } : undefined,
+      steps: log.steps.map(step => ({ ...step })),
+      trial: {
+        sourceLogId: rootId,
+        variable: log.trial?.variable ?? candidate.trial!.variable,
+        baselineTaste: log.trial?.baselineTaste ?? root.taste ?? log.taste,
+      },
+    },
+  }
+
+  return {
+    kind: 'adjust',
+    title: 'Изменить один параметр',
+    reason: 'Предлагается один небольшой шаг, чтобы результат можно было интерпретировать. Сохрани дозу, температуру и остальные параметры.',
+    recipe: candidate,
+  }
+}
+
 /**
  * Finds a prior high-rated balanced cup for the same bean and brewing method.
  * Requires a stable bean identifier/name match; never compares unrelated coffees.
