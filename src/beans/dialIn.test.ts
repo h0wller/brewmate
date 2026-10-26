@@ -173,7 +173,7 @@ describe('recipeFromBestHistoricalBrew', () => {
 
 describe('assessTrialRepeatability', () => {
   const source = log({ id: 'source', beanId: 'bean-1', beanName: 'Ethiopia', rating: 3, taste: 'sour' })
-  const trial = (id: string, rating: number, taste: BrewLog['taste'], sourceLogId = source.id): BrewLog => log({
+  const trial = (id: string, rating: number | undefined, taste: BrewLog['taste'], sourceLogId = source.id): BrewLog => log({
     id,
     beanId: 'bean-1',
     beanName: 'Ethiopia',
@@ -222,7 +222,7 @@ describe('assessTrialRepeatability', () => {
   })
 
   it('does not count records without sensory notes or ratings', () => {
-    const unscored = trial('unscored', undefined as unknown as number, undefined)
+    const unscored = trial('unscored', undefined, undefined)
     unscored.rating = undefined
     const result = assessTrialRepeatability(source, [unscored])
     expect(result.trials).toBe(0)
