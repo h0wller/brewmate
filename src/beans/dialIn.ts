@@ -263,9 +263,29 @@ export interface RepeatabilityAssessment {
  * A single cup cannot confirm a setting; require at least three sensory-rated trials,
  * and a two-thirds positive share, before calling the result repeatable.
  */
-export function assessTrialRepeatability(source: BrewLog, history: BrewLog[]): RepeatabilityAssessment {
+function trialSignature(log: BrewLog): string {
+  return JSON.stringify({
+    variable: log.trial?.variable,
+    doseG: log.doseG,
+    waterG: log.waterG,
+    tempC: log.tempC,
+    grindSize: log.grind?.size,
+    grinderId: log.grind?.grinder?.id,
+    grinderSetting: log.grind?.setting,
+    steps: log.steps.map(step => ({ duration: step.duration, pourTo: step.pourTo })),
+  })
+}
+
+export function assessTrialRepeatability(
+  source: BrewLog,
+  history: BrewLog[],
+  targetTrial?: BrewLog,
+): RepeatabilityAssessment {
+  const targetSignature = targetTrial?.trial ? trialSignature(targetTrial) : undefined
   const trials = history.filter(log =>
     log.trial?.sourceLogId === source.id &&
+    (!targetSignature || trialSignature(log) === targetSignature) &&
+    (!targetTrial?.trial || log.trial?.variable === targetTrial.trial.variable) &&
     log.method === source.method &&
     log.id !== source.id &&
     (source.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
