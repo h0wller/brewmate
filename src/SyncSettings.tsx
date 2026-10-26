@@ -5,7 +5,8 @@ import { emptyData, mergeData, sanitizeData } from './sync/merge'
 import { CoffeeJSONError, COFFEEJSON_MEDIA_TYPE, parseCoffeeJSON, toCoffeeJSON } from './coffeejson/coffeejson'
 import { downloadText } from './download'
 import type { GrinderProfile } from './types'
-import { backupFileName, makeBackup, profileToRestore } from './backup'
+import { backupFileName, dialInProfilesToRestore, makeBackup, profileToRestore } from './backup'
+import { loadDialInProfiles, saveDialInProfiles, sanitizeDialInProfiles } from './beans/dialInProfile'
 
 export function SyncSettings({ initial, local, profile, onProfile, onMerged, onClose, onOpenGrinder, onOpenAI }: {
   initial: SyncConfig | null
@@ -36,7 +37,7 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
   }
 
   const exportJson = () => {
-    const b = makeBackup(local, profile)
+    const b = makeBackup(local, profile, new Date().toISOString(), loadDialInProfiles())
     downloadText(backupFileName(b.exportedAt), JSON.stringify(b, null, 2))
     setMsg('✅ Резервная копия скачана')
   }
@@ -48,16 +49,20 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
       const raw: unknown = JSON.parse(await f.text())
       const incoming = sanitizeData(raw)
       const restored = profileToRestore(raw, profile)
+      const rawProfiles = raw && typeof raw === 'object'
+        ? sanitizeDialInProfiles((raw as Record<string, unknown>).dialInProfiles)
+        : []
       if (!incoming.recipes.length && !incoming.sessions.length && !incoming.beans.length
-        && !incoming.logs.length && !incoming.grindChecks.length && !restored) {
+        && !incoming.logs.length && !incoming.grindChecks.length && !restored && !rawProfiles.length) {
         throw new Error('в файле нет данных BrewMate')
       }
       onMerged(mergeData(local, incoming))
       if (restored) onProfile(restored)
+      if (rawProfiles.length) saveDialInProfiles(dialInProfilesToRestore(raw, loadDialInProfiles()))
       setMsg(
         `✅ Импортировано: рецептов ${incoming.recipes.length}, зерна ${incoming.beans.length}, ` +
         `каппингов ${incoming.sessions.length}, завариваний ${incoming.logs.length}, ` +
-        `замеров помола ${incoming.grindChecks.length}${restored ? ', кофемолка восстановлена' : ''} (слито с текущими данными)`,
+        `замеров помола ${incoming.grindChecks.length}, профилей настройки ${rawProfiles.length}${restored ? ', кофемолка восстановлена' : ''} (слито с текущими данными)`,
       )
     } catch (e) { setMsg('❌ Импорт: ' + (e as Error).message) }
   }
@@ -118,7 +123,7 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
         Сохранить настройки
       </button>
 
-      <div className="small">Резервная копия (файл JSON — рецепты, зерно, каппинги, журнал, замеры помола, «Моя кофемолка»)</div>
+      <div className="small">Резервная копия (JSON: рецепты, зерно, каппинги, журнал, замеры помола, «Моя кофемолка» и профили настройки)</div>
       <input ref={fileRef} type="file" accept="application/json,.json" hidden
         onChange={e => { const f = e.target.files?.[0]; if (f) importJson(f); e.currentTarget.value = '' }} />
       <button className="btn secondary" onClick={exportJson}>⬇️ Скачать копию</button>
