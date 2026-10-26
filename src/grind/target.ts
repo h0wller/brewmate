@@ -32,3 +32,12 @@ export function coarsenessFromUm(um: number): number {
   }
   return mids.length - 1
 }
+/* Обратный перевод: непрерывная крупность 0..6 (из настройки кофемолки) → ожидаемый размер частиц D50, мкм */
+export function umFromCoarseness(coarseness: number): number {
+  const mids = GRIND_SIZES.map(midUm)
+  const c = Math.max(0, Math.min(mids.length - 1, coarseness))
+  const i = Math.floor(c)
+  const frac = c - i
+  if (i >= mids.length - 1) return mids[mids.length - 1]
+  return Math.exp(Math.log(mids[i]) + frac * (Math.log(mids[i + 1]) - Math.log(mids[i])))
+}
