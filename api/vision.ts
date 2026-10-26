@@ -8,7 +8,8 @@ const env = process.env
 const url = env.UPSTASH_REDIS_REST_URL ?? env.KV_REST_API_URL
 const token = env.UPSTASH_REDIS_REST_TOKEN ?? env.KV_REST_API_TOKEN
 const store: CounterStore = url && token ? upstashStore(url, token, fetch) : memoryStore()
-const health = newHealth()\nconst providerState = url && token ? upstashProviderStateStore(url, token, fetch) : undefined
+const health = newHealth()
+const providerState = url && token ? upstashProviderStateStore(url, token, fetch) : undefined
 
 export default {
   fetch(request: Request) {
