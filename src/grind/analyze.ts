@@ -166,106 +166,6 @@ export interface SegmentOptions {
   threshold?: number    // вручную; иначе Оцу + локальный адаптивный фильтр
 }
 
-export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
-  const { width: W, height: H, data } = img
-  const gray = toGray(img)
-  const globalThr = opts.threshold ?? otsu(gray)
-  const minArea = opts.minArea ?? 6
-  const maxArea = opts.maxArea ?? Infinity
-
-  // Локальный адаптивный фильтр включается при реальном замере (когда передан maxArea или exclude),
-  // а также не мешает синтетическим тестам с большими искусственными кругами.
-  const useAdaptive = opts.maxArea !== undefined
-  const winR = Math.max(12, Math.round(Math.min(W, H) * 0.035))
-  const bgWinR = Math.min(Math.max(W, H), winR * 3)
-  const sat = useAdaptive ? buildIntegral(gray, W, H) : null
-
-  const mask = new Uint8Array(W * H)
-  let dark = 0
-  let paperPixels = 0
-
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = y * W + x
-      if (sat) {
-        const localMean = boxMean(sat, W, H, x, y, winR)
-        const broadMean = boxMean(sat, W, H, x, y, bgWinR)
-        if (broadMean < 105 && opts.threshold === undefined) continue
-        paperPixels++
-        const isDarkLocal = gray[i] < localMean - 22
-        const isDarkGlobal = gray[i] <= Math.min(globalThr + 12, 185)
-        if (opts.threshold !== undefined ? gray[i] <= opts.threshold : (isDarkLocal && isDarkGlobal)) {
-          mask[i] = 1
-          dark++
-        }
-      } else {
-        if (gray[i] <= globalThr) {
-          mask[i] = 1
-          dark++
-        }
-      }
-    }
-  }
-
-  const particles: Particle[] = []
-  const clumps: Particle[] = []
-  const dropped = { border: 0, tiny: 0, excluded: 0, clumps: 0, shape: 0 }
-  const stack = new Int32Array(W * H)
-
-  for (let start = 0; start < mask.length; start++) {
-    if (mask[start] !== 1) continue
-    let sp = 0
-    stack[sp++] = start
-    mask[start] = 2
-    let area = 0, sx = 0, sy = 0, minX = W, maxX = 0, minY = H, maxY = 0
-    let sumR = 0, sumB = 0
-    while (sp) {
-      const p = stack[--sp]
-      const x = p % W, y = (p - x) / W
-      area++; sx += x; sy += y
-      const rgbaIdx = p * 4
-      sumR += data[rgbaIdx]
-      sumB += data[rgbaIdx + 2]
-      if (x < minX) minX = x
-      if (x > maxX) maxX = x
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-      if (x > 0 && mask[p - 1] === 1) { mask[p - 1] = 2; stack[sp++] = p - 1 }
-      if (x < W - 1 && mask[p + 1] === 1) { mask[p + 1] = 2; stack[sp++] = p + 1 }
-      if (y > 0 && mask[p - W] === 1) { mask[p - W] = 2; stack[sp++] = p - W }
-      if (y < H - 1 && mask[p + W] === 1) { mask[p + W] = 2; stack[sp++] = p + W }
-    }
-    const cx = sx / area, cy = sy / area
-    const w = maxX - minX + 1, h = maxY - minY + 1
-
-    if (opts.exclude?.some(c => Math.hypot(cx - c.cx, cy - c.cy) <= c.r * 1.18)) {
-      dropped.excluded++; continue
-    }
-    if (area < minArea) { dropped.tiny++; continue }
-    if (minX === 0 || minY === 0 || maxX === W - 1 || maxY === H - 1) { dropped.border++; continue }
-
-    if (useAdaptive) {
-      const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h))
-      const boxFill = area / (w * h)
-      const isColdShadow = sumB > sumR + area * 12
-      if (aspect > 3.6 || boxFill < 0.24 || isColdShadow) {
-        dropped.shape++; continue
-      }
-    }
-
-    if (area > maxArea) {
-      dropped.clumps++
-      clumps.push({ area, cx, cy, w, h })
-      continue
-    }
-
-    particles.push({ area, cx, cy, w, h })
-  }
-
-  const denom = Math.max(1, paperPixels || mask.length)
-  return { particles, clumps, threshold: globalThr, coverage: dark / denom, dropped }
-}
-
 /* ---------- статистика ---------- */
 
 const quantile = (sortedD: number[], cumW: number[], q: number): number => {
@@ -289,27 +189,195 @@ export interface SummarizeOptions {
       Позволяет жёстко отфильтровать слипшиеся комки, которые физически не могут быть одной частицей. */
   expectedUm?: number
 }
+/* Находит границы белого листа бумаги по профилям яркости, полностью отсекая стол */
+function findPaperROI(gray: Uint8Array, W: number, H: number): { xMin: number; xMax: number; yMin: number; yMax: number } {
+  const colBright = new Uint8Array(W)
+  const stepY = Math.max(1, Math.floor(H / 64))
+  const samples: number[] = []
+  for (let x = 0; x < W; x++) {
+    samples.length = 0
+    for (let y = 0; y < H; y += stepY) samples.push(gray[y * W + x])
+    samples.sort((a, b) => a - b)
+    colBright[x] = samples[Math.floor(samples.length * 0.8)]
+  }
+  const peak = Math.max(...colBright)
+  const paperCut = Math.max(135, peak * 0.78)
+
+  let cx = Math.floor(W / 2)
+  if (colBright[cx] < paperCut) {
+    const bestIdx = colBright.findIndex(v => v >= paperCut)
+    if (bestIdx >= 0) cx = bestIdx
+  }
+  let xMin = cx, xMax = cx
+  while (xMin > 0 && colBright[xMin - 1] >= paperCut) xMin--
+  while (xMax < W - 1 && colBright[xMax + 1] >= paperCut) xMax++
+
+  const padX = Math.round((xMax - xMin) * 0.035)
+  const padY = Math.round(H * 0.02)
+  if (xMax - xMin > W * 0.35) {
+    return { xMin: xMin + padX, xMax: xMax - padX, yMin: padY, yMax: H - 1 - padY }
+  }
+  return { xMin: padX, xMax: W - 1 - padX, yMin: padY, yMax: H - 1 - padY }
+}
+
+export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
+  const { width: W, height: H, data } = img
+  const gray = toGray(img)
+  const globalThr = opts.threshold ?? otsu(gray)
+  const minArea = opts.minArea ?? 6
+  const maxArea = opts.maxArea ?? Infinity
+
+  const useAdaptive = opts.maxArea !== undefined
+  const winR = Math.max(14, Math.round(Math.min(W, H) * 0.035))
+  const sat = useAdaptive ? buildIntegral(gray, W, H) : null
+  const roi = useAdaptive && opts.threshold === undefined
+    ? findPaperROI(gray, W, H)
+    : { xMin: 0, xMax: W - 1, yMin: 0, yMax: H - 1 }
+
+  const mask = new Uint8Array(W * H)
+  let dark = 0
+  let paperPixels = 0
+
+  for (let y = roi.yMin; y <= roi.yMax; y++) {
+    for (let x = roi.xMin; x <= roi.xMax; x++) {
+      const i = y * W + x
+      if (sat) {
+        const localMean = boxMean(sat, W, H, x, y, winR)
+        if (localMean < 128 && opts.threshold === undefined) continue
+        paperPixels++
+        const isDarkLocal = gray[i] < localMean - 28
+        const isDarkGlobal = gray[i] <= Math.min(globalThr + 5, 165)
+        if (opts.threshold !== undefined ? gray[i] <= opts.threshold : (isDarkLocal && isDarkGlobal)) {
+          mask[i] = 1
+          dark++
+        }
+      } else if (gray[i] <= globalThr) {
+        mask[i] = 1
+        dark++
+      }
+    }
+  }
+
+  const particles: Particle[] = []
+  const clumps: Particle[] = []
+  const dropped = { border: 0, tiny: 0, excluded: 0, clumps: 0, shape: 0 }
+  const stack = new Int32Array(W * H)
+
+  for (let start = 0; start < mask.length; start++) {
+    if (mask[start] !== 1) continue
+    let sp = 0
+    stack[sp++] = start
+    mask[start] = 2
+    let area = 0, perimeter = 0, sx = 0, sy = 0, minX = W, maxX = 0, minY = H, maxY = 0
+    let sumR = 0, sumB = 0
+    while (sp) {
+      const p = stack[--sp]
+      const x = p % W, y = (p - x) / W
+      area++; sx += x; sy += y
+      const rgbaIdx = p * 4
+      sumR += data[rgbaIdx]
+      sumB += data[rgbaIdx + 2]
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+
+      let boundaryEdges = 0
+      if (x > 0) {
+        if (mask[p - 1] === 1) { mask[p - 1] = 2; stack[sp++] = p - 1 }
+        else if (mask[p - 1] === 0) boundaryEdges++
+      } else boundaryEdges++
+      if (x < W - 1) {
+        if (mask[p + 1] === 1) { mask[p + 1] = 2; stack[sp++] = p + 1 }
+        else if (mask[p + 1] === 0) boundaryEdges++
+      } else boundaryEdges++
+      if (y > 0) {
+        if (mask[p - W] === 1) { mask[p - W] = 2; stack[sp++] = p - W }
+        else if (mask[p - W] === 0) boundaryEdges++
+      } else boundaryEdges++
+      if (y < H - 1) {
+        if (mask[p + W] === 1) { mask[p + W] = 2; stack[sp++] = p + W }
+        else if (mask[p + W] === 0) boundaryEdges++
+      } else boundaryEdges++
+      perimeter += boundaryEdges
+    }
+
+    const cx = sx / area, cy = sy / area
+    const w = maxX - minX + 1, h = maxY - minY + 1
+
+    if (opts.exclude?.some(c => Math.hypot(cx - c.cx, cy - c.cy) <= c.r * 1.18)) {
+      dropped.excluded++; continue
+    }
+    if (area < minArea) { dropped.tiny++; continue }
+    if (minX <= roi.xMin || minY <= roi.yMin || maxX >= roi.xMax || maxY >= roi.yMax) {
+      dropped.border++; continue
+    }
+
+    const perimCorrected = Math.max(1, perimeter * 0.88)
+    const circularity = Math.min(1, (4 * Math.PI * area) / (perimCorrected * perimCorrected))
+
+    if (useAdaptive) {
+      const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h))
+      const boxFill = area / (w * h)
+      const isCold = sumB > sumR + area * 8
+      if (aspect > 2.8 || boxFill < 0.28 || isCold) {
+        dropped.shape++; continue
+      }
+      if (area > maxArea || (area > minArea * 5 && circularity < 0.42)) {
+        dropped.clumps++
+        clumps.push({ area, perimeter, circularity, cx, cy, w, h })
+        continue
+      }
+    } else if (area > maxArea) {
+      dropped.clumps++
+      clumps.push({ area, perimeter, circularity, cx, cy, w, h })
+      continue
+    }
+
+    particles.push({ area, perimeter, circularity, cx, cy, w, h })
+  }
+
+  const denom = Math.max(1, paperPixels || mask.length)
+  return { particles, clumps, threshold: globalThr, coverage: dark / denom, dropped }
+}
+
+export const equivDiameterUm = (areaPx: number, pxPerMm: number): number =>
+  (2 * Math.sqrt(areaPx / Math.PI) / pxPerMm) * 1000
+
+/* Ситовой эквивалентный диаметр для точного совпадения с лабораторными ситами 600/900/1400 мкм */
+export function sieveDiameterUm(p: Particle, pxPerMm: number, projectionFactor = 0.85): number {
+  const eq = equivDiameterUm(p.area, pxPerMm)
+  const elongation = Math.min(p.w, p.h) / Math.max(1, Math.max(p.w, p.h))
+  return eq * projectionFactor * (0.75 + 0.25 * elongation)
+}
+
+export const MIN_PARTICLES = 150
+
+export interface SummarizeOptions {
+  expectedUm?: number
+  sieveMode?: boolean
+}
 
 export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOptions = {}): GrindStats | null {
   if (!(pxPerMm > 0)) return null
-  const limitUm = (4 / pxPerMm) * 1000   // меньше ~4 px поперёк не отличить от шума
+  const limitUm = (4 / pxPerMm) * 1000
 
-  const allDs = seg.particles.map(p => equivDiameterUm(p.area, pxPerMm)).sort((a, b) => a - b)
+  const calcD = (p: Particle) => opts.sieveMode ? sieveDiameterUm(p, pxPerMm) : equivDiameterUm(p.area, pxPerMm)
+  const allDs = seg.particles.map(calcD).sort((a, b) => a - b)
   if (!allDs.length) return null
 
   let ds = allDs
   let filteredClumps = false
 
-  // Когда передан ожидаемый размер от кофемолки (opts.expectedUm), жёстко отсекаем слипшиеся комки и кучу кофе
   if (opts.expectedUm !== undefined) {
-    const maxSingleParticleUm = Math.max(1100, Math.min(2200, opts.expectedUm * 2.4))
-    const minSingleParticleUm = Math.max(90, limitUm * 0.65)
+    const maxSingleParticleUm = Math.max(1100, Math.min(2000, opts.expectedUm * 2.1))
+    const minSingleParticleUm = Math.max(120, limitUm * 0.75)
     const valid = allDs.filter(d => d >= minSingleParticleUm && d <= maxSingleParticleUm)
     if (valid.length < allDs.length * 0.85) filteredClumps = true
     const pool = valid.length >= 12 ? valid : allDs
     const medianByCount = pool[Math.floor(pool.length / 2)]
-    const iqrCutoff = Math.min(maxSingleParticleUm, Math.max(1200, medianByCount * 2.35))
-    ds = pool.length >= 30 ? pool.filter(d => d <= iqrCutoff) : pool
+    const iqrCutoff = Math.min(maxSingleParticleUm, Math.max(1150, medianByCount * 2.15))
+    ds = pool.length >= 25 ? pool.filter(d => d <= iqrCutoff) : pool
   }
 
   if (!ds.length) return null
@@ -341,11 +409,4 @@ export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOpt
     span: d50 > 0 ? (d90 - d10) / d50 : 0,
     limitUm, coverage: seg.coverage, flags,
   }
-}
-
-export const FLAG_TEXT: Record<QualityFlag, string> = {
-  few_particles: 'Мало отдельных крупинок в кадре: рассыпь щепотку помола свободнее.',
-  too_dense: 'Частицы насыпаны горкой и слипаются: горка исключена из расчёта, оценка сделана по отдельным крупинкам по краям.',
-  low_resolution: 'Снимок слишком далёкий — мелочь видна плохо: сними ближе к листу.',
-  clumps: 'На фото есть слипшиеся комки (обведены жёлтым) — они исключены из расчёта размера, чтобы не завышать результат.',
 }
