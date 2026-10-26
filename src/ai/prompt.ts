@@ -29,7 +29,7 @@ export function buildPackagePrompt(methodLabel: string, opts: PromptOptions = {}
   const known = bean ? [bean.process && `обработка: ${bean.process}`, bean.roastLevel && `обжарка: ${bean.roastLevel}`, bean.roastDate && `дата обжарки: ${bean.roastDate}`].filter(Boolean) : []
   const beanHint = known.length ? ` Контекст карточки зерна (если подтверждается пачкой): ${known.join('; ')}.` : ''
   const brewerHint = /moccamaster/i.test(methodLabel)
-    ? ' Для Moccamaster это автоматическая капельная кофеварка: не предлагай ручные круговые вливания; шаги должны описывать подготовку корзины и машинный цикл.'
+    ? ' Для Moccamaster это автоматическая капельная кофеварка. В локальном рецепте предусмотрены промывка фильтра, ручное предсмачивание 2,5× дозы на 30–40 сек, затем машинный цикл на оставшемся объёме воды.'
     : ''
   return `Ты — опытный бариста. На фото — пачка кофе. Определи данные о зерне с этикетки для метода ${methodLabel}, доза ${dose} г.${waterHint}${beanHint}${brewerHint}
 Все текстовые поля пиши на русском языке.
