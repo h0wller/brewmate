@@ -1,5 +1,6 @@
 import type { BrewLog, BrewStep } from '../types'
 import type { GrindSize } from '../grinders/size'
+import { safeWrite } from '../storageError'
 
 /**
  * An explicitly promoted, repeatable dial-in snapshot. It is not the manual
@@ -88,27 +89,21 @@ export function loadDialInProfiles(): DialInProfile[] {
 
 export function saveDialInProfile(profile: DialInProfile): void {
   const next = upsertDialInProfile(loadDialInProfiles(), profile)
-  try {
-    localStorage.setItem(DIAL_IN_PROFILES_KEY, JSON.stringify(next))
-  } catch {
-    // Storage errors must not crash the brew journal.
-  }
+  safeWrite(localStorage, DIAL_IN_PROFILES_KEY, next)
 }
 
 export function findDialInProfile(
   list: DialInProfile[],
   grinderId: string | undefined,
   method: string,
-  beanId?: string,
-  roastDate?: string,
+  options: { matchBean?: boolean; beanId?: string; matchRoastDate?: boolean; roastDate?: string } = {},
 ): DialInProfile | undefined {
   if (!grinderId) return undefined
-  const filterBean = arguments.length >= 4
-  const filterRoast = arguments.length >= 5
+  const { matchBean = false, beanId, matchRoastDate = false, roastDate } = options
   return list.find(p =>
     p.grinderId === grinderId &&
     p.method === method &&
-    (!filterBean || p.beanId === beanId) &&
-    (!filterRoast || p.roastDate === roastDate),
+    (!matchBean || p.beanId === beanId) &&
+    (!matchRoastDate || p.roastDate === roastDate),
   )
 }
