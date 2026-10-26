@@ -425,7 +425,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
             </ol>
           </div>
 
-          <input ref={fileRef} type="file" accept="image/*" hidden
+          <input ref={fileRef} type="file" accept="image/*" capture={mode === 'sieve' ? 'environment' : undefined} hidden
             onChange={e => { onFile(e.target.files?.[0]); e.target.value = '' }} />
           <button className="btn" style={{ marginTop: 12 }} disabled={busy} onClick={() => fileRef.current?.click()}>
             {mode === 'sieve' ? '📷 Сфоткать просеянную фракцию' : '📷 Сфоткать помол'}
