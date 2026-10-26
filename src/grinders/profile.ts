@@ -3,7 +3,7 @@ import type { GrindSize } from './size'
 import { GRIND_SIZES } from './size'
 import { normalizeGrind } from './grind'
 import { safeWrite } from '../storageError'
-import { allPresetSettings, presetSettingByCoarseness, presetSettingForSize } from './presets'
+import { allPresetSettings } from './presets'
 
 export const GRINDER_KEY = 'brewmate.grinder.v1'
 const KEY = GRINDER_KEY
@@ -39,23 +39,20 @@ export const saveProfile = (p: GrinderProfile): void => { safeWrite(localStorage
 export const settingFor = (p: GrinderProfile, size: GrindSize): string | undefined =>
   p.calibration[size]
 
-/* Умный подбор настройки: сначала ручная калибровка пользователя,
-   а если её нет — ориентир «≈ N» по усреднённой шкале кофемолки (с учётом дробного coarseness и Red Clix) */
+/* Безопасный подбор настройки: числовые factory presets в presets.ts не подтверждены
+   источниками и не являются измерениями. Поэтому не выдаём их за рекомендацию рецепта.
+   Они доступны отдельно через «Подставить ориентиры»; в рецепте используем ручную калибровку. */
 export function smartSettingFor(
   p: GrinderProfile,
   size: GrindSize,
-  coarseness?: number,
+  _coarseness?: number,
 ): string | undefined {
   const manual = p.calibration[size]
-  if (manual) return manual
-  const gid = p.grinder?.id
-  const preset = coarseness !== undefined
-    ? presetSettingByCoarseness(gid, coarseness, p.redClix)
-    : presetSettingForSize(gid, size, p.redClix)
-  return preset && `${APPROX} ${preset}`
+  if (manual && !manual.trim().startsWith(APPROX)) return manual
+  return undefined
 }
 
-/* Помол для рецепта: уровень + настройка пользователя (или авто-пресет кофемолки при переданном coarseness) */
+/* Помол для рецепта: уровень + только пользовательская калибровка, если она есть. */
 export function grindFor(p: GrinderProfile, size: GrindSize, coarseness?: number): Grind {
   const g: Grind = { size }
   if (p.grinder) g.grinder = p.grinder

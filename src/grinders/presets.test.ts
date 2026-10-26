@@ -106,8 +106,10 @@ describe('smartSettingFor', () => {
       calibration: { medium_fine: '22 клика' },
     }
     expect(smartSettingFor(profile, 'medium_fine', 2.0)).toBe('22 клика')
-    // для уровня без ручной калибровки используется пресет
-    expect(smartSettingFor(profile, 'medium', 3.0)).toBe('≈ 27 кл.')
+    // неподтверждённые пресеты не выдаются как настройка готового рецепта
+    expect(smartSettingFor(profile, 'medium', 3.0)).toBeUndefined()
+    expect(smartSettingFor({ grinder: { id: 'comandante-c40' }, calibration: {} }, 'medium_coarse', 4)).toBeUndefined()
+    expect(smartSettingFor({ grinder: { id: 'comandante-c40' }, calibration: factoryCalibration('comandante-c40') }, 'medium_coarse', 4)).toBeUndefined()
   })
 })
 

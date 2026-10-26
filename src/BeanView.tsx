@@ -4,6 +4,7 @@ import {
   LEVEL_LABEL, METHODS, WATER_PROFILES, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from './beans/engine'
+import { BREWING_PRINCIPLES, BREW_KNOWLEDGE } from './beans/knowledge'
 import { AIError, loadAIConfig, recognizePackage } from './ai/client'
 import { prepareImage } from './ai/image'
 import { buildAIResult } from './ai/recipe'
@@ -240,6 +241,26 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
             </div>
           )}
           {rec.tips.map((t, i) => <div className="tip" key={i}>• {t}</div>)}
+          <div className="tip">
+            <b>Принципы и источники:</b>
+            {BREWING_PRINCIPLES.map(principle => (
+              <div key={principle.id}>
+                {principle.rule}
+                {principle.sources.map(source => (
+                  <div key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.publisher}: {source.title}</a></div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {method === 'moccamaster' && (
+            <div className="tip">
+              <b>Источники профиля Moccamaster:</b>
+              {BREW_KNOWLEDGE.moccamaster.sources.map(source => (
+                <div key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.publisher}: {source.title}</a></div>
+              ))}
+              <div>Предсмачивание показано как опциональный эксперимент, а не требование производителя.</div>
+            </div>
+          )}
           <div className="tip">
             Не уверен в помоле? <button type="button" className="linkBtn" onClick={onOpenGrindHelp}>Проверить по фото</button>
           </div>

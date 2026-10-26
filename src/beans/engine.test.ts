@@ -51,30 +51,32 @@ describe('recommend', () => {
 
   it('натуральная обработка: чуть крупнее и прохладнее', () => {
     const r = recommend(bean({ process: 'natural' }), 'v60')
-    expect([r.size, r.nudge, r.temp]).toEqual(['medium_fine', 1, 92])
+    expect([r.size, r.nudge, r.temp]).toEqual(['medium_fine', 0, 93])
   })
 
   it('поправки складываются: тёмная натуральная дотягивает до следующего уровня', () => {
     const r = recommend(bean({ roastLevel: 'dark', process: 'natural' }), 'v60')
-    expect(r.size).toBe('medium')
-    expect(r.nudge).toBe(-1)
-  })
-
-  it('свежее зерно (3 дня): дольше блюм, чуть крупнее', () => {
-    const r = recommend(bean({ roastDate: '2026-10-19' }), 'v60')
-    expect(r.bloom).toBe(60)
+    expect(r.size).toBe('medium_fine')
     expect(r.nudge).toBe(1)
   })
 
-  it('старое зерно (51 день): мельче помол', () => {
+  it('свежее зерно (3 дня): дольше блюм без автоматического сдвига помола', () => {
+    const r = recommend(bean({ roastDate: '2026-10-19' }), 'v60')
+    expect(r.bloom).toBe(60)
+    expect(r.nudge).toBe(0)
+  })
+
+  it('старое зерно (51 день): нет обязательного сдвига помола', () => {
     const r = recommend(bean({ roastDate: '2026-09-01' }), 'v60')
-    expect(r.nudge).toBe(-1)
+    expect(r.nudge).toBe(0)
     expect(r.tips.some(t => t.includes('51'))).toBe(true)
   })
 
   it('Moccamaster имеет отдельный базовый профиль', () => {
     const r = recommend(bean(), 'moccamaster')
-    expect([r.size, r.temp, r.ratio]).toEqual(['medium', 94, 16])
+    expect([r.size, r.temp, r.ratio]).toEqual(['medium_coarse', 94, 16.7])
+    expect(r.coarseness).toBeGreaterThanOrEqual(3.6)
+    expect(r.tips.some(t => t.includes('Moccamaster USA Support'))).toBe(true)
   })
 
   it('honey обработка даёт отдельную осторожную подсказку', () => {
@@ -89,8 +91,8 @@ describe('recommend', () => {
 
   it('анаэробная ферментация: помол крупнее и прохладнее', () => {
     const r = recommend(bean({ process: 'anaerobic' }), 'v60')
-    expect(r.temp).toBe(91)
-    expect(r.nudge).toBe(1)
+    expect(r.temp).toBe(93)
+    expect(r.nudge).toBe(0)
     expect(r.tips.some(t => t.includes('Анаэробная'))).toBe(true)
   })
 
@@ -145,7 +147,7 @@ describe('recipeFromBean', () => {
     expect(r.steps[1].note).toContain('Предсмачивание')
     expect(r.steps[2].pourTo).toBe(r.waterG)
     expect(r.steps[2].note).toContain('Moccamaster')
-    expect(r.steps[2].note).toContain('202')
+    expect(r.steps[2].note).toContain('оставшиеся')
   })
 
   it('каппинг: настаивание 4 минуты, а не блюм в 0 секунд', () => {
