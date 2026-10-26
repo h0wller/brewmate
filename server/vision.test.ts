@@ -305,6 +305,12 @@ describe('handle: HTTP-обработчик', () => {
     expect(calls).toEqual(['groq'])
     expect(await res.json()).toMatchObject({ provider: 'groq', result: MODEL_JSON })
   })
+  it('does not silently fall back when the selected benchmark provider fails', async () => {
+    const { f, calls } = fakeFetch({ 'generativelanguage': [ok()], 'groq': [fail(500)] })
+    const res = await handle(post({ ...GOOD, providerId: 'groq' }), deps(f))
+    expect(res.status).toBe(503)
+    expect(calls).toEqual(['groq'])
+  })
   it('rejects malformed or unconfigured benchmark provider IDs', async () => {
     const d = deps(fakeFetch({}).f)
     expect((await handle(post({ ...GOOD, providerId: '../secret' }), d)).status).toBe(400)
