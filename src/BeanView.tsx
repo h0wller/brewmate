@@ -369,6 +369,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
               <button className="btn secondary" onClick={() => onMakeRecipe(historicalRecipe)}>Использовать исторический рецепт</button>
             </div>
           )}
+        </div>
       ) : (
         <div className="small">Выбери метод и дозу — покажу помол, температуру и воду.</div>
       )}
