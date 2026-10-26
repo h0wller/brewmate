@@ -2,6 +2,7 @@ import type { BeanProfile, BrewStep, Grind, Recipe } from '../types'
 import { uid } from '../storage'
 import { GRIND_SIZES, describeCoarseness } from '../grinders/size'
 import type { GrindSize } from '../grinders/size'
+import { BREW_KNOWLEDGE } from './knowledge'
 
 export type RoastLevel = 'light' | 'medium' | 'dark'
 export type MethodKey = 'v60' | 'drip' | 'moccamaster' | 'french' | 'aero' | 'cupping'
@@ -23,7 +24,7 @@ export const WATER_PROFILES: Record<WaterKey, { label: string; sub: string }> = 
 export const METHODS: Record<MethodKey, { label: string; ratio: number; size: GrindSize; temp: number; bloom: number }> = {
   v60: { label: 'V60', ratio: 16, size: 'medium_fine', temp: 93, bloom: 45 },
   drip: { label: 'Капельная', ratio: 15, size: 'medium', temp: 93, bloom: 30 },
-  moccamaster: { label: 'Moccamaster', ratio: 16, size: 'medium', temp: 94, bloom: 30 },
+  moccamaster: { label: 'Moccamaster', ratio: 16.7, size: 'medium_coarse', temp: 94, bloom: 35 },
   french: { label: 'Френч-пресс', ratio: 15, size: 'coarse', temp: 95, bloom: 0 },
   aero: { label: 'Аэропресс', ratio: 13, size: 'medium_fine', temp: 90, bloom: 0 },
   cupping: { label: 'Каппинг', ratio: 18, size: 'medium_coarse', temp: 94, bloom: 0 },
@@ -104,26 +105,15 @@ export function recommend(
   const days = daysSince(bean.roastDate)
   if (days !== null) {
     if (days < 7) {
-      coarse += 0.3; bloom += 15
+      bloom += 15
       tips.push(`Свежее зерно (${days} дн.) — дегазация: блюм дольше на 15 сек.`)
     } else if (days > 30) {
-      coarse -= 0.4
-      tips.push(`Зерну ${days} дн. — мели мельче и используй скорее.`)
+      tips.push(`Зерну ${days} дн. — оценивай вкус и проток; один только возраст не задаёт обязательную поправку помола.`)
     }
   }
 
-  if (bean.process === 'honey') {
-    coarse += 0.15
-    tips.push('Honey: начни с базового профиля; небольшая поправка помола зависит от ферментации и обжарки.')
-  }
-
-  if (bean.process === 'natural') {
-    coarse += 0.3; temp -= 1
-    tips.push('Натуральная обработка — слаще и растворимее: чуть крупнее помол.')
-  }
-  if (bean.process === 'anaerobic') {
-    coarse += 0.4; temp -= 2
-    tips.push('Анаэробная ферментация — легко отдаёт вкус: помол крупнее и вода прохладнее.')
+  if (bean.process === 'honey' || bean.process === 'natural' || bean.process === 'anaerobic') {
+    tips.push(`${bean.process === 'honey' ? 'Honey' : bean.process === 'natural' ? 'Натуральная' : 'Анаэробная'} обработка: не меняй помол или температуру автоматически только по названию процесса; начни с профиля устройства и корректируй по вкусу/протоку.`)
   }
 
   if (water === 'soft') {
@@ -137,6 +127,16 @@ export function recommend(
   if (dose >= 40) {
     coarse += 0.35
     tips.push(`Большая порция (${dose} г) — слой кофе толще: помол чуть крупнее для равномерного пролива.`)
+  }
+
+  if (method === 'moccamaster') {
+    const k = BREW_KNOWLEDGE.moccamaster
+    tips.push(`Источник: ${k.sources[0].publisher}. Стартовый диапазон: ${k.grindDescription}; ${k.ratioMin}–${k.ratioMax} г воды на 1 г кофе, ${k.targetTempMinC}–${k.targetTempMaxC} °C.`)
+    /* Не уводим Moccamaster в условный эспрессо/мока-диапазон из-за общих поправок.
+       Для светлой обжарки допускаем небольшой шаг мельче внутри фильтр-диапазона. */
+    coarse = Math.max(3.6, coarse)
+    ratio = Math.max(k.ratioMin, Math.min(k.ratioMax, ratio))
+    temp = Math.max(k.targetTempMinC, Math.min(k.targetTempMaxC, temp))
   }
 
   const { size, nudge } = describeCoarseness(coarse)
@@ -170,12 +170,12 @@ export function recipeFromBean(
     { duration: 60, pourTo: water, note: 'сломать корку, снять пену' },
   ]
   else if (method === 'moccamaster') {
-    /* Ручное предсмачивание перед запуском автоматического цикла.
+    /* Опциональное ручное предсмачивание перед автоматическим циклом.
        В резервуар наливается остаток, чтобы предсмачивание не увеличило общую пропорцию. */
     const prewet = Math.min(Math.round(dose * 2.5), water)
     steps = [
       { duration: 30, pourTo: 0, note: 'Промой бумажный фильтр горячей водой, прогрей корзину и слей воду. Засыпь кофе и выровняй слой.' },
-      { duration: 35, pourTo: prewet, note: `Предсмачивание: равномерно увлажни весь кофе ${prewet} г воды (около 2,5× дозы). Подожди 30–40 сек для дегазации.` },
+      { duration: 35, pourTo: prewet, note: `Опциональное предсмачивание: равномерно увлажни весь кофе ${prewet} г воды (около 2,5× дозы). Подожди 30–40 сек для дегазации.` },
       { duration: 240, pourTo: water, note: `Запусти Moccamaster. В резервуар налей оставшиеся ${water - prewet} г воды, а не полный объём рецепта; дождись завершения цикла и стекания.` },
     ]
   }
