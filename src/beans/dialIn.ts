@@ -154,3 +154,21 @@ export function makeTrialRecipe(log: BrewLog): Recipe | undefined {
   }
   return base
 }
+
+/**
+ * Finds a prior high-rated balanced cup for the same bean and brewing method.
+ * Requires a stable bean identifier/name match; never compares unrelated coffees.
+ */
+export function findBestComparableBrew(current: BrewLog, history: BrewLog[]): BrewLog | undefined {
+  const hasBeanIdentity = Boolean(current.beanId || current.beanName)
+  if (!hasBeanIdentity) return undefined
+  return history
+    .filter(candidate => {
+      if (candidate.id === current.id || candidate.method !== current.method) return false
+      const sameBean = current.beanId
+        ? candidate.beanId === current.beanId
+        : !candidate.beanId && candidate.beanName === current.beanName
+      return sameBean && candidate.rating !== undefined && candidate.rating >= 4 && candidate.taste === 'balanced'
+    })
+    .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || b.startedAt - a.startedAt)[0]
+}
