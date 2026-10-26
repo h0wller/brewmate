@@ -5,7 +5,7 @@ import { emptyData, mergeData, sanitizeData } from './sync/merge'
 import { CoffeeJSONError, COFFEEJSON_MEDIA_TYPE, parseCoffeeJSON, toCoffeeJSON } from './coffeejson/coffeejson'
 import { downloadText } from './download'
 import type { GrinderProfile } from './types'
-import { backupFileName, dialInProfilesToRestore, makeBackup, profileToRestore } from './backup'
+import { backupFileName, dialInProfilesToRestore, makeBackup, parseBackupJson, profileToRestore } from './backup'
 import { loadDialInProfiles, saveDialInProfiles, sanitizeDialInProfiles } from './beans/dialInProfile'
 
 export function SyncSettings({ initial, local, profile, onProfile, onMerged, onClose, onOpenGrinder, onOpenAI }: {
@@ -46,7 +46,7 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
   const importJson = async (f: File) => {
     setMsg('')
     try {
-      const raw: unknown = JSON.parse(await f.text())
+      const raw = parseBackupJson(await f.text())
       const incoming = sanitizeData(raw)
       const restored = profileToRestore(raw, profile)
       const rawProfiles = raw && typeof raw === 'object'
