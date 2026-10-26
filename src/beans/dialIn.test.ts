@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
 import { GRIND_SIZES } from '../grinders/size'
-import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew, summarizeBeanHistory } from './dialIn'
+import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew, summarizeBeanHistory, planNextExperiment } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   id: 'log-1',
@@ -114,6 +114,53 @@ describe('assessTrialOutcome', () => {
   })
 })
 
+
+describe('planNextExperiment', () => {
+  it('repeats a balanced experimental recipe unchanged before suggesting another adjustment', () => {
+    const source = log({ id: 'source', taste: 'sour', beanId: 'bean-1' })
+    const successful = log({
+      id: 'trial-1', taste: 'balanced', rating: 4, beanId: 'bean-1',
+      trial: { sourceLogId: 'source', variable: 'grind', baselineTaste: 'sour' },
+      grind: { grinder: { id: 'comandante-c40' }, setting: 'unset', size: 'medium' },
+    })
+    const plan = planNextExperiment(successful, [source, successful])
+    expect(plan.kind).toBe('repeat')
+    expect(plan.recipe?.doseG).toBe(successful.doseG)
+    expect(plan.recipe?.waterG).toBe(successful.waterG)
+    expect(plan.recipe?.tempC).toBe(successful.tempC)
+    expect(plan.recipe?.grind?.size).toBe(successful.grind?.size)
+    expect(plan.recipe?.trial?.sourceLogId).toBe('source')
+  })
+
+  it('changes only one variable when the taste is not balanced', () => {
+    const source = log({ id: 'source', taste: 'sour', beanId: 'bean-1' })
+    const plan = planNextExperiment(source, [source])
+    expect(plan.kind).toBe('adjust')
+    expect(plan.recipe?.grind?.size).toBe('medium')
+    expect(plan.recipe?.doseG).toBe(source.doseG)
+    expect(plan.recipe?.waterG).toBe(source.waterG)
+    expect(plan.recipe?.tempC).toBe(source.tempC)
+  })
+
+  it('does not present an already-tested adjustment as new', () => {
+    const source = log({ id: 'source', taste: 'sour', beanId: 'bean-1' })
+    const attempted = log({
+      id: 'trial-1', taste: 'sour', beanId: 'bean-1',
+      trial: { sourceLogId: 'source', variable: 'grind', baselineTaste: 'sour' },
+      grind: { grinder: { id: 'comandante-c40' }, setting: undefined, size: 'medium' },
+    })
+    const plan = planNextExperiment(source, [source, attempted])
+    expect(plan.kind).toBe('repeat')
+    expect(plan.title).toContain('Повторить')
+    expect(plan.recipe?.grind?.size).toBe(source.grind?.size)
+  })
+
+  it('does not invent an experiment before sensory feedback is recorded', () => {
+    const plan = planNextExperiment(log({ taste: undefined }), [])
+    expect(plan.kind).toBe('stop')
+    expect(plan.recipe).toBeUndefined()
+  })
+})
 
 describe('findBestComparableBrew', () => {
   it('returns a high-rated balanced cup only for the same bean and method', () => {
