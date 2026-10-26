@@ -355,6 +355,11 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
               ? 'Выбери фракцию, которую реально отделил ситами, затем сфотографируй её на белой бумаге рядом с монетой. Не используй смесь фракций.'
               : 'Приложение измеряет частицы на фото и скажет, крупнее или мельче. Размер считается по снимку; настройка кофемолки нужна, чтобы привязать замер к её шкале.'}
           </div>
+          {mode === 'photo' && hasSieveCalibration && (
+            <div className="card" role="status" style={{ display: 'block', cursor: 'default' }}>
+              🔬 Оптический анализ откалиброван по твоим ситам (коэфф. ×{activeFactor.toFixed(2)})
+            </div>
+          )}
 
           <div className="card" onClick={onOpenGrinder}>
             <div className="grow">
@@ -488,8 +493,55 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
         </>
       )}
 
-      {step === 'result' && stats && advice && (
+      {step === 'result' && stats && (
         <>
+          {mode === 'sieve' ? (
+            <>
+              <div className="card" style={{ marginTop: 12, display: 'block', cursor: 'default' }}>
+                <b>Ситовая калибровка по фото</b>
+                <div className="small" style={{ margin: '8px 0 0' }}>
+                  Сырой замер камеры: ≈ {rawStats ? Math.round(rawStats.d50) : '—'} мкм (посчитано частиц: {rawStats?.n ?? 0}).
+                </div>
+                <div className="small" style={{ margin: '6px 0 0' }}>
+                  Эталон сита ({SIEVE_REFERENCES[sieveBracket].label}): {SIEVE_REFERENCES[sieveBracket].d50Um} мкм
+                  (коридор {SIEVE_REFERENCES[sieveBracket].minUm}–{SIEVE_REFERENCES[sieveBracket].maxUm} мкм).
+                </div>
+                <div className="small" style={{ margin: '6px 0 0' }}>
+                  Поправка проекции камеры: ×{calibrationFactor?.toFixed(2) ?? '—'}.
+                  Она корректирует систематическое расхождение этого оптического замера с выбранной физической фракцией.
+                </div>
+                <div className="small" style={{ margin: '6px 0 0' }}>
+                  После сохранения коэффициент будет объединяться с другими ситовыми референсами через медиану. Сохранится реальный результат фото, а не только число эталона.
+                </div>
+              </div>
+              <button className="btn" style={{ marginTop: 8 }} disabled={!rawStats || calibrationFactor === null || sieveSaved} onClick={saveSieveReference}>
+                {sieveSaved ? 'Ситовой референс сохранён' : '✅ Сохранить как ситовой референс'}
+              </button>
+              {sieveSaved && <div className="small" role="status">Сохранён фото-замер, исходный D50 и коэффициент коррекции.</div>}
+              <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+                <b>Сохранённые ситовые референсы</b>
+                {checks.filter(c => c.source === 'sieve' && (!grinderId || (c.grinderId ?? '') === grinderId)).length === 0
+                  ? <div className="small">Пока нет сохранённых ситовых фотографий для этой кофемолки.</div>
+                  : checks.filter(c => c.source === 'sieve' && (!grinderId || (c.grinderId ?? '') === grinderId)).sort((a, b) => b.at - a.at).map(c => (
+                    <div key={c.id} className="row" style={{ marginTop: 8 }}>
+                      <div className="grow">
+                        <div>{c.sieveBracket ? SIEVE_REFERENCES[c.sieveBracket].label : 'Ситовая фракция'} · эталон D50 {c.d50} мкм</div>
+                        <div className="meta">
+                          Камера: {c.rawD50 ?? '—'} мкм · коэффициент ×{c.calibrationFactor?.toFixed(2) ?? '—'}
+                          {c.setting !== undefined ? ` · настройка ${c.setting} ${grinderScale?.unit ?? ''}` : ' · без настройки кофемолки'}
+                          {' · '}{new Date(c.at).toLocaleDateString('ru-RU')}
+                        </div>
+                      </div>
+                      <button type="button" className="x" aria-label="Удалить ситовой референс"
+                        onClick={() => { if (window.confirm('Удалить этот ситовой референс?')) onDeleteCheck(c.id) }}>×</button>
+                    </div>
+                  ))}
+              </div>
+              <button className="btn secondary" style={{ marginTop: 8 }} onClick={retake}>Назад к настройке / переснять</button>
+              <div className="small">Масштаб: {pxPerMm.toFixed(1)} пикс/мм.</div>
+            </>
+          ) : advice && (
+            <>
           <div className="card" style={{ marginTop: 12, display: 'block', cursor: 'default' }}>
             <div style={{ fontSize: 18, fontWeight: 600 }}>
               {VERDICT_TEXT[advice.verdict]}{advice.offPct > 0 ? ` (на ~${advice.offPct}%)` : ''}
@@ -541,7 +593,14 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
             {saved ? 'Замер сохранён' : 'Сохранить замер'}
           </button>
           <button className="btn secondary" style={{ marginTop: 8 }} onClick={retake}>Переснять</button>
+          {hasSieveCalibration && (
+            <div className="card" role="status" style={{ display: 'block', cursor: 'default' }}>
+              🔬 Оптический анализ откалиброван по твоим ситам (коэфф. ×{activeFactor.toFixed(2)})
+            </div>
+          )}
           <div className="small">Масштаб: {pxPerMm.toFixed(1)} пикс/мм.</div>
+            </>
+          )}
         </>
       )}
     </div>
