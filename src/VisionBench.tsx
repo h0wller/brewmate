@@ -111,6 +111,7 @@ export function VisionBench() {
         id: editingId ?? makeId(),
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
+        ...(existing?.benchmarkRuns ? { benchmarkRuns: existing.benchmarkRuns } : {}),
       }
       await saveVisionBenchRecord(record)
       await refresh()
