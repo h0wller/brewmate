@@ -73,3 +73,20 @@
 .benchScore { color: #a8f0c8; font-weight: 600; }
 .benchRunnerMessage { margin: 8px 0 0; color: #a8f0c8; font-size: 12px; }
 .benchResults .benchTip { margin: 10px 0 0; }
+
+
+.benchProviderList { display: grid; gap: 5px; margin: 8px 0 10px; }
+.benchProviderStatus { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; border-top: 1px solid #3a3a42; padding-top: 6px; font-size: 11px; overflow-wrap: anywhere; }
+.benchProviderStatus strong.isConfigured { color: #a8f0c8; font-weight: 500; }
+.benchProviderStatus strong.isMissing { color: #c4c4cc; font-weight: 500; }
+.benchRunTimestamp { color: #98989f; font-size: 11px; }
+.benchModelFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 4px 0; }
+.benchModelFields > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; background: #202024; border-radius: 7px; padding: 8px; }
+.benchModelFields span { color: #98989f; font-size: 10px; }
+.benchModelFields strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.benchModelFields .benchModelNotes { grid-column: 1 / -1; }
+.benchModelNotes p { margin: 0; color: #d6d6dc; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.benchPhotoBroken { display: flex; align-items: center; justify-content: center; width: 92px; height: 92px; box-sizing: border-box; border-radius: 10px; border: 1px dashed #7d6262; background: #2b2b31; color: #ffb4ae; text-align: center; font-size: 10px; padding: 6px; }
+@media (max-width: 520px) {
+  .benchModelFields { grid-template-columns: minmax(0, 1fr); }
+}
