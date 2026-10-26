@@ -6,7 +6,7 @@ import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
-import { assessTrialOutcome, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './beans/dialIn'
+import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './beans/dialIn'
 
 export function LogView({ log, sourceLog, history, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
   log: BrewLog
@@ -28,6 +28,8 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
   const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
   const referenceAssessment = log.reference ? assessTrialOutcome(sourceLog, log) : undefined
   const comparable = findBestComparableBrew(log, history)
+  const repeatability = assessTrialRepeatability(log, history)
+  const relatedTrials = history.filter(item => item.trial?.sourceLogId === log.id && item.method === log.method)
 
   const pickBean = (id: string) => {
     const b = beans.find(x => x.id === id)
@@ -54,6 +56,17 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
       <div className="small" style={{ marginTop: 0 }}>
         {log.doseG} г кофе{log.grind ? ` · ${formatGrind(log.grind, { withGrinder: true })}` : ''}
       </div>
+
+      {!log.trial && !log.reference && relatedTrials.length > 0 && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Повторяемость настройки</b>
+          <div className="small">
+            {repeatability.trials} проб с сенсорными отметками · положительных {repeatability.positive} · ухудшений {repeatability.worse} · без ясного сигнала {repeatability.unchanged}.
+          </div>
+          <div><b>{repeatability.status === 'confirmed' ? 'Воспроизводимый результат' : repeatability.status === 'promising' ? 'Перспективный, но не окончательный' : repeatability.status === 'inconsistent' ? 'Результат пока нестабилен' : 'Недостаточно проб'}</b></div>
+          <div>{repeatability.summary}</div>
+        </div>
+      )}
 
       {comparable && (
         <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
