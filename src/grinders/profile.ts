@@ -65,7 +65,7 @@ export function smartSettingFor(
 export function grindFor(p: GrinderProfile, size: GrindSize, coarseness?: number, photoProfiles: PhotoGrindProfile[] = []): Grind {
   const g: Grind = { size }
   if (p.grinder) g.grinder = p.grinder
-  const setting = coarseness !== undefined ? smartSettingFor(p, size, coarseness, photoProfiles) : settingFor(p, size)
+  const setting = smartSettingFor(p, size, coarseness, photoProfiles)
   if (setting) g.setting = setting
   return g
 }
