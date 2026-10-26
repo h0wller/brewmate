@@ -31,6 +31,7 @@ export class CoffeeJSONError extends Error {
 const METHOD_OUT: Record<string, { method: string; brewer?: string }> = {
   v60: { method: 'pour_over', brewer: 'hario-v60' },
   drip: { method: 'drip' },
+  moccamaster: { method: 'drip', brewer: 'technivorm-moccamaster' },
   french: { method: 'french_press', brewer: 'french-press' },
   aero: { method: 'aeropress', brewer: 'aeropress' },
   cupping: { method: 'immersion' },
@@ -200,10 +201,14 @@ function importRecipe(raw: unknown, notes: string[]): { recipe?: Recipe; skip?: 
   }
 
   const method = str(raw.method)
+  const brewer = isObj(raw.brewer) ? str(raw.brewer.id) : undefined
+  const importedMethod = method === 'drip' && brewer === 'technivorm-moccamaster'
+    ? 'moccamaster'
+    : method ? METHOD_IN[method] ?? method : 'v60'
   const recipe: Recipe = stamp({
     id: uid(),
     title,
-    method: method ? METHOD_IN[method] ?? method : 'v60',
+    method: importedMethod,
     doseG: round1(coffee.value),
     waterG: round1(water.value),
     tempC: temp ? Math.round(temp.value) : DEFAULT_TEMP,
