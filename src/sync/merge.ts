@@ -85,13 +85,13 @@ function mergeDialInProfiles(local: DialInProfile[], remote: DialInProfile[], de
   const map = new Map<string, DialInProfile>()
   const keyOf = (p: DialInProfile) => JSON.stringify([p.grinderId, p.method, p.beanId ?? null, p.roastDate ?? null])
   for (const p of [...remote, ...local]) {
-    const deletedAt = dead[p.id]
-    if (deletedAt !== undefined && p.savedAt <= deletedAt) continue
     const key = keyOf(p)
     const current = map.get(key)
     if (!current || p.savedAt >= current.savedAt) map.set(key, p)
   }
-  return [...map.values()].sort((a, b) => b.savedAt - a.savedAt)
+  return [...map.values()]
+    .filter(p => dead[p.id] === undefined || p.savedAt > dead[p.id])
+    .sort((a, b) => b.savedAt - a.savedAt)
 }
 
 /* Photo recommendations have no stable id; use grinder + grind size and latest updatedAt. */
