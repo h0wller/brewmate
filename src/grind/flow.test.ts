@@ -18,6 +18,11 @@ describe('время против плана', () => {
     expect(flowSignal(log({ durationS: 200 }))).toBe('slow')
     expect(flowSignal(log({ durationS: 100 }))).toBe('fast')
   })
+  it('Moccamaster распознаётся как перколяционный метод', () => {
+    expect(flowSignal(log({ method: 'moccamaster', durationS: 200 }))).toBe('slow')
+    expect(flowSignal(log({ method: 'moccamaster', durationS: 100 }))).toBe('fast')
+  })
+
   it('погружные методы и короткие планы не дают сигнала', () => {
     expect(flowSignal(log({ method: 'french', durationS: 400 }))).toBeUndefined()
     expect(flowSignal(log({ steps: [{ duration: 30, pourTo: 50 }], durationS: 90 }))).toBeUndefined()
