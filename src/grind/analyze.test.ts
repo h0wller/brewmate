@@ -73,6 +73,8 @@ describe('измерение размера', () => {
     expect(corrected.d50).toBeCloseTo(stats!.d50 * 0.82, 8)
     expect(corrected.d90).toBeCloseTo(stats!.d90 * 0.82, 8)
     expect(summarize(segment(img), PX_PER_MM)!.d50).toBeCloseTo(stats!.d50, 8)
+    expect(summarize(segment(img), PX_PER_MM, { calibrationFactor: 9 })!.d50).toBeCloseTo(stats!.d50 * 1.45, 8)
+    expect(summarize(segment(img), PX_PER_MM, { calibrationFactor: 0.1 })!.d50).toBeCloseTo(stats!.d50 * 0.55, 8)
   })
 
   it('более мелкий помол даёт меньший D50, более крупный — больший', () => {
