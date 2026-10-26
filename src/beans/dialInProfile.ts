@@ -1,4 +1,4 @@
-import type { BrewLog } from '../types'
+import type { BrewLog, BrewStep } from '../types'
 
 /**
  * An explicitly promoted, repeatable dial-in snapshot. It is not the manual
@@ -17,6 +17,7 @@ export interface DialInProfile {
   tempC: number
   grindSize?: string
   grinderSetting?: string
+  steps: BrewStep[]
   positiveTrials: number
   totalTrials: number
   savedAt: number
@@ -37,6 +38,7 @@ export function sanitizeDialInProfiles(raw: unknown): DialInProfile[] {
       && typeof p.tempC === 'number' && Number.isFinite(p.tempC)
       && typeof p.positiveTrials === 'number' && Number.isFinite(p.positiveTrials)
       && typeof p.totalTrials === 'number' && Number.isFinite(p.totalTrials)
+      && Array.isArray(p.steps) && p.steps.every(step => step && typeof step.duration === 'number' && Number.isFinite(step.duration) && typeof step.pourTo === 'number' && Number.isFinite(step.pourTo))
       && typeof p.savedAt === 'number' && Number.isFinite(p.savedAt)
   }).slice(-100)
 }
@@ -67,6 +69,7 @@ export function profileFromConfirmedLog(
     tempC: log.tempC,
     grindSize: log.grind?.size,
     grinderSetting: log.grind?.setting,
+    steps: log.steps.map(step => ({ ...step })),
     positiveTrials: assessment.positive,
     totalTrials: assessment.trials,
     savedAt: now,
