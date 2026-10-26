@@ -4,7 +4,7 @@ import type { BrewLog, BrewStep } from '../types'
    там помол прямо задаёт скорость. В погружных методах (френч-пресс, аэропресс) время от помола почти не зависит. */
 export type Flow = 'slow' | 'fast'
 
-const PERCOLATION = new Set(['v60', 'drip'])
+const PERCOLATION = new Set(['v60', 'drip', 'moccamaster'])
 export const SLOW_RATIO = 1.3     // дольше плана больше чем на 30 %
 export const FAST_RATIO = 0.75    // быстрее плана больше чем на 25 %
 const MIN_PLAN_S = 60             // у совсем коротких рецептов разброс времени слишком велик
