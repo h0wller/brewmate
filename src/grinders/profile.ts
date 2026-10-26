@@ -3,7 +3,8 @@ import type { GrindSize } from './size'
 import { GRIND_SIZES } from './size'
 import { normalizeGrind } from './grind'
 import { safeWrite } from '../storageError'
-import { allPresetSettings } from './presets'
+import { allPresetSettings, getGrinderScale } from './presets'
+import type { PhotoGrindProfile } from '../grind/store'
 
 export const GRINDER_KEY = 'brewmate.grinder.v1'
 const KEY = GRINDER_KEY
@@ -46,17 +47,25 @@ export function smartSettingFor(
   p: GrinderProfile,
   size: GrindSize,
   _coarseness?: number,
+  photoProfiles: PhotoGrindProfile[] = [],
 ): string | undefined {
   const manual = p.calibration[size]
   if (manual && !manual.trim().startsWith(APPROX)) return manual
+  const photo = p.grinder?.id
+    ? photoProfiles.find(x => x.grinderId === p.grinder?.id && x.size === size)
+    : undefined
+  if (photo) {
+    const unit = getGrinderScale(p.grinder?.id)?.unit
+    return `${photo.setting}${unit ? ` ${unit}` : ''}`
+  }
   return undefined
 }
 
 /* Помол для рецепта: уровень + только пользовательская калибровка, если она есть. */
-export function grindFor(p: GrinderProfile, size: GrindSize, coarseness?: number): Grind {
+export function grindFor(p: GrinderProfile, size: GrindSize, coarseness?: number, photoProfiles: PhotoGrindProfile[] = []): Grind {
   const g: Grind = { size }
   if (p.grinder) g.grinder = p.grinder
-  const setting = coarseness !== undefined ? smartSettingFor(p, size, coarseness) : settingFor(p, size)
+  const setting = coarseness !== undefined ? smartSettingFor(p, size, coarseness, photoProfiles) : settingFor(p, size)
   if (setting) g.setting = setting
   return g
 }
