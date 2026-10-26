@@ -114,6 +114,10 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const curve = useMemo(() => fitCurve(curvePoints(checks, grinderId)), [checks, grinderId])
   const activeFactor = activeCalibrationFactor(checks, grinderId)
   const hasSieveCalibration = checks.some(c => c.source === 'sieve' && typeof c.calibrationFactor === 'number' && c.calibrationFactor >= 0.55 && c.calibrationFactor <= 1.45)
+  const savedSieveReferences = useMemo(() => checks.filter(c => c.source === 'sieve'
+    && c.sieveBracket !== undefined && typeof c.rawD50 === 'number' && c.rawD50 > 0 && c.n > 0
+    && typeof c.calibrationFactor === 'number' && c.calibrationFactor >= 0.55 && c.calibrationFactor <= 1.45
+    && (!grinderId || (c.grinderId ?? '') === grinderId)), [checks, grinderId])
   const mine = useMemo(() => checks.filter(c => (c.grinderId ?? '') === (grinderId ?? '')), [checks, grinderId])
 
   const pickSize = (nextSize: GrindSize) => {
@@ -520,9 +524,9 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
               {sieveSaved && <div className="small" role="status">Сохранён фото-замер, исходный D50 и коэффициент коррекции.</div>}
               <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
                 <b>Сохранённые ситовые референсы</b>
-                {checks.filter(c => c.source === 'sieve' && (!grinderId || (c.grinderId ?? '') === grinderId)).length === 0
+                {savedSieveReferences.length === 0
                   ? <div className="small">Пока нет сохранённых ситовых фотографий для этой кофемолки.</div>
-                  : checks.filter(c => c.source === 'sieve' && (!grinderId || (c.grinderId ?? '') === grinderId)).sort((a, b) => b.at - a.at).map(c => (
+                  : [...savedSieveReferences].sort((a, b) => b.at - a.at).map(c => (
                     <div key={c.id} className="row" style={{ marginTop: 8 }}>
                       <div className="grow">
                         <div>{c.sieveBracket ? SIEVE_REFERENCES[c.sieveBracket].label : 'Ситовая фракция'} · эталон D50 {c.d50} мкм</div>
