@@ -17,6 +17,8 @@ export function BrewTimer({ recipe, onLog }: { recipe: Recipe; onLog?: (d: LogDr
       recipeId: recipe.id,
       trial: recipe.trial,
       reference: recipe.reference,
+      beanId: recipe.beanId,
+      beanRoastDate: recipe.beanRoastDate,
       title: recipe.title,
       method: recipe.method,
       doseG: recipe.doseG,
