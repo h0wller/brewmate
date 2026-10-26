@@ -441,6 +441,66 @@ export function assessTrialRepeatability(
 }
 
 
+export interface TrialEvidenceConfidence {
+  status: 'hypothesis' | 'preliminary' | 'repeatable'
+  ratedTrials: number
+  balancedTrials: number
+  meanRating?: number
+  ratingRange?: [number, number]
+  summary: string
+}
+
+/**
+ * Grade evidence for one exact recipe signature. Only records with both a taste
+ * label and a 1–5 rating count; repeated settings show consistency, not causality.
+ */
+export function assessTrialEvidenceConfidence(
+  source: BrewLog,
+  history: BrewLog[],
+  targetTrial: BrewLog,
+): TrialEvidenceConfidence {
+  if (!targetTrial.trial) return {
+    status: 'hypothesis', ratedTrials: 0, balancedTrials: 0,
+    summary: 'Это пока гипотеза: запись не привязана к экспериментальной серии.',
+  }
+  const signature = trialSignature(targetTrial)
+  const rated = history.filter(log =>
+    log.trial?.sourceLogId === source.id &&
+    log.trial.variable === targetTrial.trial!.variable &&
+    trialSignature(log) === signature &&
+    log.method === source.method &&
+    (source.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
+    (source.beanRoastDate ? log.beanRoastDate === source.beanRoastDate : !log.beanRoastDate) &&
+    (source.grind?.grinder?.id ? log.grind?.grinder?.id === source.grind.grinder.id : !log.grind?.grinder?.id) &&
+    log.taste !== undefined &&
+    typeof log.rating === 'number' && log.rating >= 1 && log.rating <= 5
+  )
+  const ratings = rated.map(log => log.rating!)
+  const balancedTrials = rated.filter(log => log.taste === 'balanced').length
+  const meanRating = ratings.length
+    ? Math.round((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length) * 100) / 100
+    : undefined
+  const ratingRange: [number, number] | undefined = ratings.length
+    ? [Math.min(...ratings), Math.max(...ratings)]
+    : undefined
+
+  if (rated.length >= 3 && balancedTrials === rated.length && ratingRange![1] - ratingRange![0] <= 1) return {
+    status: 'repeatable', ratedTrials: rated.length, balancedTrials, meanRating, ratingRange,
+    summary: 'Предварительный практический результат воспроизведён минимум в трёх чашках с балансом и близкими оценками. Это поддерживает повторяемость в записанных условиях, но не доказывает, что именно изменение вызвало улучшение.',
+  }
+  if (rated.length >= 2 && balancedTrials >= 2 && (ratingRange![1] - ratingRange![0] <= 1)) return {
+    status: 'preliminary', ratedTrials: rated.length, balancedTrials, meanRating, ratingRange,
+    summary: 'Есть предварительный положительный сигнал: несколько чашек оценены как сбалансированные, оценки близки. Нужны дополнительные повторы.',
+  }
+  return {
+    status: 'hypothesis', ratedTrials: rated.length, balancedTrials, meanRating, ratingRange,
+    summary: rated.length === 0
+      ? 'Пока нет чашек с одновременно записанными вкусом и оценкой для этой точной настройки.'
+      : 'Данных пока недостаточно для устойчивого вывода. Продолжай фиксировать и вкус, и оценку, не смешивая разные настройки.',
+  }
+}
+
+
 export interface BeanHistoryEvidence {
   brews: number
   ratedBrews: number
