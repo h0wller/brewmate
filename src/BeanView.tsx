@@ -5,7 +5,7 @@ import {
 } from './beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from './beans/engine'
 import { BREWING_PRINCIPLES, BREW_KNOWLEDGE } from './beans/knowledge'
-import { recipeFromBestHistoricalBrew } from './beans/dialIn'
+import { recipeFromBestHistoricalBrew, summarizeBeanHistory } from './beans/dialIn'
 import { AIError, loadAIConfig, recognizePackage } from './ai/client'
 import { prepareImage } from './ai/image'
 import { buildAIResult } from './ai/recipe'
@@ -50,8 +50,11 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
   const rec = ready ? recommend(bean, method, water ?? 'balanced', dose) : null
   const mySetting = rec ? smartSettingFor(profile, rec.size, rec.coarseness) : undefined
   const historicalRecipe = method !== null && doseOk && dose !== null
-    ? recipeFromBestHistoricalBrew(bean, method, dose, history)
+    ? recipeFromBestHistoricalBrew(bean, method, dose, history, { grinderId: profile.grinder?.id, roastDate: bean.roastDate })
     : undefined
+  const historyEvidence = method !== null
+    ? summarizeBeanHistory(bean, method, profile.grinder?.id, history)
+    : null
   const grinderName = profile.grinder
     ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id)
     : null
@@ -272,7 +275,31 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
           <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness), dose))}>
             Сделать рецепт → в таймер
           </button>
-          {historicalRecipe && (
+          {historyEvidence && historyEvidence.brews > 0 && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Данные твоих завариваний</b>
+          <div className="small">
+            Сопоставимых чашек: {historyEvidence.brews}
+            {historyEvidence.roastDate ? ` · обжарка ${historyEvidence.roastDate}` : ' · дата обжарки не указана'}.
+            Учитываются только то же зерно, метод, кофемолка и совпадающая дата обжарки.
+          </div>
+          <div>
+            {historyEvidence.meanRatio !== undefined ? `Среднее соотношение: 1:${historyEvidence.meanRatio}` : ''}
+            {historyEvidence.medianTempC !== undefined ? ` · медианная температура: ${historyEvidence.medianTempC} °C` : ''}
+          </div>
+          <div className="small">
+            {historyEvidence.ratedBrews
+              ? `Средняя оценка: ${historyEvidence.meanRating}/5 по ${historyEvidence.ratedBrews} чашкам`
+              : 'Оценки чашек пока не записаны'}
+            { ` · отмечен баланс: ${historyEvidence.balancedBrews}` }
+          </div>
+          {historyEvidence.grindSizes.length > 0 && (
+            <div className="small">Уровни помола в истории: {historyEvidence.grindSizes.join(', ')}. Это записи шкалы крупности, а не конвертация кликов между кофемолками.</div>
+          )}
+        </div>
+      )}
+
+      {historicalRecipe && (
             <div className="tip" style={{ marginTop: 10 }}>
               <b>Есть удачная чашка из истории</b>
               <div>Для этого зерна и метода есть запись с оценкой не ниже 4/5 и отмеченным балансом. Можно использовать её как альтернативную стартовую точку.</div>
