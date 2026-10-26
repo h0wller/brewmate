@@ -21,6 +21,9 @@ import { loadDialInProfiles, findDialInProfile } from './beans/dialInProfile'
 import { uid } from './storage'
 
 const DOSES = [15, 18, 30, 60]
+const PROCESS_LABEL: Record<string, string> = {
+  washed: 'Мытый', natural: 'Натуральный', honey: 'Хани', anaerobic: 'Анаэробная ферментация',
+}
 
 export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI }: {
   bean: BeanProfile
@@ -116,7 +119,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
       <div className="row" style={{ flexWrap: 'wrap' }}><label>Обработка</label>
         {['washed', 'natural', 'honey', 'anaerobic'].map(p => (
           <button key={p} className={'chip' + (bean.process === p ? ' on' : '')}
-            onClick={() => set({ process: p })}>{({ washed: 'Мытый', natural: 'Натуральный', honey: 'Хани', anaerobic: 'Анаэробная ферментация' } as Record<string, string>)[p]}</button>
+            onClick={() => set({ process: p })}>{PROCESS_LABEL[p] ?? p}</button>
         ))}
       </div>
 
@@ -219,7 +222,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
         <div className="card aiResult" style={{ display: 'block', cursor: 'default' }}>
           <div style={{ fontWeight: 600 }}>🤖 Пачка распознана</div>
           <div className="meta">
-            {[aiResult.bean.name, aiResult.bean.origin, aiResult.bean.process,
+            {[aiResult.bean.name, aiResult.bean.origin, aiResult.bean.process ? PROCESS_LABEL[aiResult.bean.process] ?? aiResult.bean.process : undefined,
               aiResult.bean.roastLevel && LEVEL_LABEL[aiResult.bean.roastLevel]].filter(Boolean).join(' · ') || 'данные с пачки не нашлись'}
             {' — записано в карточку зерна выше'}
           </div>
