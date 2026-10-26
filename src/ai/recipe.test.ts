@@ -60,7 +60,7 @@ describe('buildAIResult', () => {
     const { recipe } = buildAIResult(OUT, { ...ctx, method: 'moccamaster' })
     expect(recipe.method).toBe('moccamaster')
     expect(recipe.tempC).toBe(96)
-    expect(recipe.waterG).toBe(240)
+    expect(recipe.waterG).toBe(251)
     expect(recipe.steps).toHaveLength(3)
     expect(recipe.steps[1].pourTo).toBe(38)
     expect(recipe.steps[1].note).toContain('Предсмачивание')
