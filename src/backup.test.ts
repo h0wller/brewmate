@@ -37,7 +37,7 @@ describe('резервная копия', () => {
     expect(dialInProfilesToRestore({ dialInProfiles: 'broken' }, [local])).toEqual([local])
     expect(dialInProfilesToRestore(null, [local])).toEqual([local])
   })
-}
+})
 
 describe('восстановление «Моя кофемолка» из файла', () => {
   it('на устройстве без настроенной кофемолки — восстанавливается', () => {
