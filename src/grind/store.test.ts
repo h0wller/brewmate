@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { capChecks, curvePoints, sanitizeChecks } from './store'
+import { capChecks, curvePoints, sanitizeChecks, sanitizePhotoProfiles } from './store'
 import type { GrindCheck } from './store'
 
 const c = (p: Partial<GrindCheck>): GrindCheck => ({
@@ -35,5 +35,18 @@ describe('лимит замеров', () => {
   it('старый замер без createdAt получает его из времени замера; logId сохраняется', () => {
     const [x] = sanitizeChecks([{ ...c({ id: 'q', at: 42 }), logId: 'log1' }])
     expect([x.createdAt, x.updatedAt, x.logId]).toEqual([42, 42, 'log1'])
+  })
+})
+
+describe('профили помола по фото', () => {
+  const profile = {
+    grinderId: 'comandante-c40', size: 'medium_fine', setting: 18, measuredSetting: 20,
+    d50: 620, updatedAt: 100, checkId: 'check-1',
+  }
+  it('сохраняет отдельную рекомендацию для конкретной кофемолки и размера', () => {
+    expect(sanitizePhotoProfiles([profile])).toEqual([profile])
+  })
+  it('отбрасывает профиль с отсутствующей кофемолкой или некорректным D50', () => {
+    expect(sanitizePhotoProfiles([{ ...profile, grinderId: '' }, { ...profile, d50: 0 }])).toEqual([])
   })
 })

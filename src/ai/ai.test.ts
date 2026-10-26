@@ -73,10 +73,16 @@ describe('fitStepsToWater', () => {
 })
 
 describe('промпт: доза и вода', () => {
-  it('подставляет дозу и воду пользователя', () => {
+  it('подставляет дозу, воду, устройство и данные карточки зерна', () => {
     const p = buildPackagePrompt('V60', { doseG: 60, water: 'hard' })
     expect(p.includes('доза 60 г')).toBe(true)
     expect(p.includes('жёсткая')).toBe(true)
+    const devicePrompt = buildPackagePrompt('Moccamaster', { doseG: 30, bean: { process: 'honey', roastLevel: 'light', roastDate: '2026-10-01' } })
+    expect(devicePrompt).toContain('Moccamaster')
+    expect(devicePrompt).toContain('машинный цикл')
+    expect(devicePrompt).toContain('обработка: honey')
+    expect(devicePrompt).toContain('обжарка: light')
+    expect(devicePrompt).toContain('2026-10-01')
     expect(buildPackagePrompt('V60').includes('доза 15 г')).toBe(true)
   })
 })

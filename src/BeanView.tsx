@@ -65,7 +65,14 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
     setBusyAI(true); setErr(''); setErrKind(null); setAiResult(null)
     try {
       const img = await prepareImage(f)
-      const out = await recognizePackage(aiCfg, METHODS[method].label, img, { water: water ?? undefined, doseG: dose })
+      const out = await recognizePackage(aiCfg, METHODS[method].label, img, {
+        water: water ?? undefined, doseG: dose,
+        bean: {
+          ...(bean.process === 'washed' || bean.process === 'natural' || bean.process === 'honey' || bean.process === 'anaerobic' ? { process: bean.process } : {}),
+          ...(bean.roastLevel ? { roastLevel: bean.roastLevel } : {}),
+          ...(bean.roastDate ? { roastDate: bean.roastDate } : {}),
+        },
+      })
       const res = buildAIResult(out, { bean, method, doseG: dose, water: water ?? 'balanced', profile })
       onChange(res.bean)
       setAiResult(res)

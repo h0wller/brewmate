@@ -22,9 +22,16 @@ describe('buildAIResult', () => {
     expect(recipe.method).toBe('v60')
     expect(recipe.doseG).toBe(15)
     expect(recipe.waterG).toBe(240)
-    expect(recipe.tempC).toBe(94)
+    expect(recipe.tempC).toBe(95)
     expect(recipe.steps.at(-1)?.pourTo).toBe(240)
     expect(recipe.grind?.size).toBe('medium_fine')
+  })
+
+  it('ручные обработка, обжарка и дата имеют приоритет над догадками AI', () => {
+    const existing = { ...bean, process: 'washed', roastLevel: 'medium' as const, roastDate: '2026-10-01' }
+    const { bean: b, recipe } = buildAIResult({ bean: { process: 'natural', roastLevel: 'dark', roastDate: '2026-09-01' } }, { ...ctx, bean: existing })
+    expect([b.process, b.roastLevel, b.roastDate]).toEqual(['washed', 'medium', '2026-10-01'])
+    expect(recipe.tempC).toBe(93)
   })
 
   it('доза 60 г: шаги подгоняются под воду, а не остаются на 15 г', () => {
@@ -33,18 +40,29 @@ describe('buildAIResult', () => {
     expect(recipe.steps.at(-1)?.pourTo).toBe(960)
   })
 
-  it('мусор в ответе не ломает рецепт: берём расчёт движка и простые шаги', () => {
+  it('мусор в ответе не ломает рецепт: берём локальный профиль метода', () => {
     const { recipe } = buildAIResult({ bean: 5, recipe: { grindSize: 'огромный', tempC: 'горячая', steps: 'нет' } }, ctx)
     expect(recipe.waterG).toBeGreaterThan(0)
     expect(recipe.tempC).toBeGreaterThanOrEqual(85)
     expect(recipe.tempC).toBeLessThanOrEqual(98)
-    expect(recipe.steps.length).toBe(2)
+    expect(recipe.steps.length).toBe(3)
     expect(recipe.steps.at(-1)?.pourTo).toBe(recipe.waterG)
   })
 
-  it('температура ограничена 85–98 °C', () => {
-    expect(buildAIResult({ recipe: { tempC: 120 } }, ctx).recipe.tempC).toBe(98)
-    expect(buildAIResult({ recipe: { tempC: 40 } }, ctx).recipe.tempC).toBe(85)
+  it('AI не перезаписывает локальную температуру и пропорцию произвольными числами', () => {
+    const expected = buildAIResult({ recipe: { tempC: 120, ratio: 14, grindSize: 'coarse' } }, ctx).recipe
+    expect(expected.tempC).toBe(93)
+    expect(expected.waterG).toBe(240)
+    expect(expected.grind?.size).toBe('medium_fine')
+  })
+
+  it('Moccamaster сохраняет машинный цикл и базовые параметры в AI-сценарии', () => {
+    const { recipe } = buildAIResult(OUT, { ...ctx, method: 'moccamaster' })
+    expect(recipe.method).toBe('moccamaster')
+    expect(recipe.tempC).toBe(96)
+    expect(recipe.waterG).toBe(240)
+    expect(recipe.steps).toHaveLength(2)
+    expect(recipe.steps[1].note).toContain('Moccamaster')
   })
 })
 

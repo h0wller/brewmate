@@ -4,7 +4,7 @@ import { GRIND_SIZES, describeCoarseness } from '../grinders/size'
 import type { GrindSize } from '../grinders/size'
 
 export type RoastLevel = 'light' | 'medium' | 'dark'
-export type MethodKey = 'v60' | 'drip' | 'french' | 'aero' | 'cupping'
+export type MethodKey = 'v60' | 'drip' | 'moccamaster' | 'french' | 'aero' | 'cupping'
 export type WaterKey = 'balanced' | 'soft' | 'hard'
 
 export const LEVEL_LABEL: Record<RoastLevel, string> = {
@@ -23,6 +23,7 @@ export const WATER_PROFILES: Record<WaterKey, { label: string; sub: string }> = 
 export const METHODS: Record<MethodKey, { label: string; ratio: number; size: GrindSize; temp: number; bloom: number }> = {
   v60: { label: 'V60', ratio: 16, size: 'medium_fine', temp: 93, bloom: 45 },
   drip: { label: 'Капельная', ratio: 15, size: 'medium', temp: 93, bloom: 30 },
+  moccamaster: { label: 'Moccamaster', ratio: 16, size: 'medium', temp: 94, bloom: 30 },
   french: { label: 'Френч-пресс', ratio: 15, size: 'coarse', temp: 95, bloom: 0 },
   aero: { label: 'Аэропресс', ratio: 13, size: 'medium_fine', temp: 90, bloom: 0 },
   cupping: { label: 'Каппинг', ratio: 18, size: 'medium_coarse', temp: 94, bloom: 0 },
@@ -111,6 +112,11 @@ export function recommend(
     }
   }
 
+  if (bean.process === 'honey') {
+    coarse += 0.15
+    tips.push('Honey: начни с базового профиля; небольшая поправка помола зависит от ферментации и обжарки.')
+  }
+
   if (bean.process === 'natural') {
     coarse += 0.3; temp -= 1
     tips.push('Натуральная обработка — слаще и растворимее: чуть крупнее помол.')
@@ -162,6 +168,10 @@ export function recipeFromBean(
   else if (method === 'cupping') steps = [
     { duration: 240, pourTo: water, note: 'залить и настоять 4 мин' },
     { duration: 60, pourTo: water, note: 'сломать корку, снять пену' },
+  ]
+  else if (method === 'moccamaster') steps = [
+    { duration: 30, pourTo: 0, note: 'Промой фильтр, засыпь кофе и выровняй слой в корзине.' },
+    { duration: 240, pourTo: water, note: 'Запусти цикл Moccamaster и дождись полного стекания.' },
   ]
   else if (method === 'aero') steps = [
     { duration: 30, pourTo: water, note: 'залить и перемешать' },

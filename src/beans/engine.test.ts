@@ -72,6 +72,16 @@ describe('recommend', () => {
     expect(r.tips.some(t => t.includes('51'))).toBe(true)
   })
 
+  it('Moccamaster имеет отдельный базовый профиль', () => {
+    const r = recommend(bean(), 'moccamaster')
+    expect([r.size, r.temp, r.ratio]).toEqual(['medium', 94, 16])
+  })
+
+  it('honey обработка даёт отдельную осторожную подсказку', () => {
+    const r = recommend(bean({ process: 'honey' }), 'v60')
+    expect(r.tips.some(t => t.includes('Honey'))).toBe(true)
+  })
+
   it('другой метод берёт свой базовый уровень', () => {
     const r = recommend(bean({ roastLevel: 'dark' }), 'french')
     expect([r.size, r.nudge, r.temp, r.ratio]).toEqual(['coarse', 1, 92, 15])
@@ -124,6 +134,15 @@ describe('recipeFromBean', () => {
       }
       expect(r.steps.at(-1)?.pourTo).toBe(r.waterG)
     }
+  })
+
+  it('Moccamaster использует цикл машины, а не ручные вливания', () => {
+    const rec = recommend(bean(), 'moccamaster')
+    const r = recipeFromBean(bean(), 'moccamaster', rec, { size: rec.size }, 15)
+    expect(r.steps).toHaveLength(2)
+    expect(r.steps[0].pourTo).toBe(0)
+    expect(r.steps[1].pourTo).toBe(r.waterG)
+    expect(r.steps[1].note).toContain('Moccamaster')
   })
 
   it('каппинг: настаивание 4 минуты, а не блюм в 0 секунд', () => {

@@ -14,12 +14,24 @@ export const PROMPT_WATER: Record<PromptWater, string> = {
 export const isPromptWater = (x: unknown): x is PromptWater =>
   typeof x === 'string' && Object.prototype.hasOwnProperty.call(PROMPT_WATER, x)
 
-export interface PromptOptions { water?: PromptWater; doseG?: number }
+export interface PromptBeanContext {
+  process?: 'washed' | 'natural' | 'honey' | 'anaerobic'
+  roastLevel?: 'light' | 'medium' | 'dark'
+  roastDate?: string
+}
+
+export interface PromptOptions { water?: PromptWater; doseG?: number; bean?: PromptBeanContext }
 
 export function buildPackagePrompt(methodLabel: string, opts: PromptOptions = {}) {
   const dose = opts.doseG && opts.doseG > 0 ? opts.doseG : 15
-  const waterHint = opts.water ? ` Вода пользователя: ${PROMPT_WATER[opts.water]} — учти это в температуре, помоле и числе вливаний.` : ''
-  return `Ты — чемпион-бариста. На фото — пачка кофе. Извлеки данные и составь рецепт для метода ${methodLabel}, доза ${dose} г.${waterHint}
+  const waterHint = opts.water ? ` Вода пользователя: ${PROMPT_WATER[opts.water]} — учти это в температуре и экстракции.` : ''
+  const bean = opts.bean
+  const known = bean ? [bean.process && `обработка: ${bean.process}`, bean.roastLevel && `обжарка: ${bean.roastLevel}`, bean.roastDate && `дата обжарки: ${bean.roastDate}`].filter(Boolean) : []
+  const beanHint = known.length ? ` Контекст карточки зерна (если подтверждается пачкой): ${known.join('; ')}.` : ''
+  const brewerHint = /moccamaster/i.test(methodLabel)
+    ? ' Для Moccamaster это автоматическая капельная кофеварка: не предлагай ручные круговые вливания; шаги должны описывать подготовку корзины и машинный цикл.'
+    : ''
+  return `Ты — опытный бариста. На фото — пачка кофе. Извлеки данные и составь рецепт для метода ${methodLabel}, доза ${dose} г.${waterHint}${beanHint}${brewerHint}
 Все текстовые поля (title, note, notes) пиши на русском языке.
 Верни СТРОГО JSON без markdown и пояснений:
 {
@@ -27,8 +39,8 @@ export function buildPackagePrompt(methodLabel: string, opts: PromptOptions = {}
   "recipe": { "title": "строка", "tempC": 88-96, "ratio": 14-17, "grindSize": "extra_fine|fine|medium_fine|medium|medium_coarse|coarse|extra_coarse", "steps": [ { "duration": секунды, "pourTo": суммарные граммы воды, "note": "строка" } ] }
 }
 grindSize — только одно значение из списка (уровень крупности помола), настройки конкретной кофемолки не придумывай.
-Правила: светлая обжарка — вода горячее и помол мельче; тёмная — вода холоднее и помол крупнее; натуральная и анаэробная обработка — чуть крупнее помол.
-steps: 3–5 шагов, первый — блюм (2–3 веса дозы), pourTo растёт монотонно до dose*ratio.`
+Правила: используй дату обжарки для оценки свежести, не придумывай дату если её нет. Светлая обжарка обычно требует большей энергии экстракции, тёмная — меньшей. Натуральная, honey и анаэробная обработка не гарантируют одинаковую растворимость: не делай больших поправок только по названию процесса.
+Для ручных проливных методов дай 3–5 шагов, первый — блюм (2–3 веса дозы). Для Moccamaster опиши подготовку фильтра и машинный цикл без ручных вливаний. pourTo растёт монотонно до dose*ratio.`
 }
 
 /* ---------- второе мнение по помолу ---------- */
