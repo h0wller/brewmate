@@ -125,6 +125,16 @@ describe('findBestComparableBrew', () => {
     expect(findBestComparableBrew(current, [unrelatedBean, otherMethod, reference, higher])).toBe(higher)
   })
 
+  it('filters journal comparisons by exact grinder and roast-date snapshot when supplied', () => {
+    const current = log({ id: 'current', beanId: 'bean-1', beanRoastDate: '2026-10-01' })
+    const match = log({ id: 'match', beanId: 'bean-1', beanRoastDate: '2026-10-01', rating: 5, taste: 'balanced' })
+    const otherGrinder = log({ id: 'other-grinder', beanId: 'bean-1', beanRoastDate: '2026-10-01', grind: { grinder: { id: 'other' }, size: 'medium_coarse' }, rating: 5, taste: 'balanced', startedAt: 20 })
+    const otherRoast = log({ id: 'other-roast', beanId: 'bean-1', beanRoastDate: '2026-09-01', rating: 5, taste: 'balanced', startedAt: 30 })
+    expect(findBestComparableBrew(current, [otherGrinder, otherRoast, match], {
+      grinderId: 'comandante-c40', roastDate: '2026-10-01',
+    })).toBe(match)
+  })
+
   it('does not infer a historical reference without a bean identity', () => {
     const current = log({ beanId: undefined, beanName: undefined })
     const candidate = log({ id: 'candidate', rating: 5, taste: 'balanced' })
