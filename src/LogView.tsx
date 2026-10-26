@@ -8,7 +8,7 @@ import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
 import { diagnoseNextCup, makeTrialRecipe } from './beans/dialIn'
 
-export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete }: {
+export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
   log: BrewLog
   beans: BeanProfile[]
   canRepeat: boolean         // исходный рецепт ещё существует
