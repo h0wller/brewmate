@@ -26,6 +26,7 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
   const dialIn = diagnoseNextCup(log)
   const trial = makeTrialRecipe(log)
   const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
+  const referenceAssessment = log.reference ? assessTrialOutcome(sourceLog, log) : undefined
   const comparable = findBestComparableBrew(log, history)
 
   const pickBean = (id: string) => {
@@ -95,6 +96,29 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
           </ul>
           <div className="small" style={{ marginTop: 0 }}>налито факт/план, г · скорость факт/план, г/с</div>
         </>
+      )}
+
+      {log.reference && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Рецепт на основе исторической чашки</b>
+          <div className="small">
+            Исходная чашка: {sourceLog?.title ?? 'запись недоступна'} · оценка при выборе: {log.reference.sourceRating}/5.
+          </div>
+          {sourceLog && (
+            <div>
+              Ориентир: {sourceLog.doseG} г / {sourceLog.waterG} г · {sourceLog.tempC} °C
+              {' → '}
+              Сейчас: {log.doseG} г / {log.waterG} г · {log.tempC} °C
+            </div>
+          )}
+          {referenceAssessment && (
+            <div style={{ marginTop: 8 }}>
+              <b>{referenceAssessment.verdict === 'promising' ? 'Положительный сигнал' : referenceAssessment.verdict === 'worse' ? 'Возможное ухудшение' : referenceAssessment.verdict === 'mixed' ? 'Нет заметного изменения' : 'Пока недостаточно данных'}</b>
+              <div>{referenceAssessment.summary}</div>
+              {referenceAssessment.evidence.map((item, i) => <div className="small" key={i}>• {item}</div>)}
+            </div>
+          )}
+        </div>
       )}
 
       {log.trial && (
