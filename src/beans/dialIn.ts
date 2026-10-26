@@ -11,12 +11,73 @@ export interface DialInAdvice {
   sourceUrl: string
 }
 
+export interface TrialAssessment {
+  verdict: 'promising' | 'worse' | 'mixed' | 'inconclusive'
+  summary: string
+  evidence: string[]
+}
+
 const COMPASS_URL = 'https://www.baristahustle.com/coffee-compass/'
 
 /**
- * Conservative next-cup advice based on the logged sensory outcome.
- * Changes one variable only; does not invent a numeric grinder setting.
+ * Compare an experimental brew with its source. Never call a single cup proof:
+ * rating/taste are sensory evidence, while time/yield are context, not quality scores.
  */
+export function assessTrialOutcome(source: BrewLog | undefined, trial: BrewLog): TrialAssessment {
+  if (!source) return {
+    verdict: 'inconclusive',
+    summary: 'Исходная чашка не найдена: сравнение невозможно.',
+    evidence: [],
+  }
+
+  const evidence: string[] = []
+  const ratingDelta = source.rating !== undefined && trial.rating !== undefined
+    ? trial.rating - source.rating
+    : undefined
+  if (ratingDelta !== undefined) {
+    evidence.push(`Оценка: ${source.rating}/5 → ${trial.rating}/5 (${ratingDelta > 0 ? '+' : ''}${ratingDelta})`)
+  }
+  if (source.taste && trial.taste) {
+    evidence.push(`Вкус: ${source.taste} → ${trial.taste}`)
+  }
+  if (source.durationS > 0 && trial.durationS > 0) {
+    const delta = trial.durationS - source.durationS
+    evidence.push(`Время: ${source.durationS} → ${trial.durationS} с (${delta > 0 ? '+' : ''}${delta} с)`)
+  }
+  if (source.finalG !== undefined && trial.finalG !== undefined) {
+    evidence.push(`Выход: ${source.finalG.toFixed(1)} → ${trial.finalG.toFixed(1)} г`)
+  }
+
+  const tasteImproved = Boolean(source.taste && trial.taste &&
+    source.taste !== 'balanced' && trial.taste === 'balanced')
+  const ratingImproved = ratingDelta !== undefined && ratingDelta > 0
+  const ratingWorse = ratingDelta !== undefined && ratingDelta < 0
+  const tasteWorse = Boolean(source.taste && trial.taste &&
+    source.taste === 'balanced' && trial.taste !== 'balanced')
+
+  if (ratingImproved && !tasteWorse || tasteImproved && !ratingWorse) return {
+    verdict: 'promising',
+    summary: 'Есть положительный сигнал. Повтори пробу с тем же зерном и методом, прежде чем считать настройку подтверждённой.',
+    evidence,
+  }
+  if (ratingWorse || tasteWorse) return {
+    verdict: 'worse',
+    summary: 'Результат выглядит хуже исходного. Рассмотри возврат к исходной настройке; одна чашка всё ещё не доказывает причинность.',
+    evidence,
+  }
+  if (ratingDelta !== undefined && ratingDelta === 0 && source.taste && trial.taste && source.taste === trial.taste) return {
+    verdict: 'mixed',
+    summary: 'Заметного улучшения по записанным сенсорным данным нет. Не меняй дополнительные параметры одновременно.',
+    evidence,
+  }
+  return {
+    verdict: 'inconclusive',
+    summary: 'Недостаточно сопоставимых сенсорных данных. Отметь вкус и оценку обеих чашек; время и выход сами по себе не говорят, какая чашка вкуснее.',
+    evidence,
+  }
+}
+
+/** Conservative next-cup advice based on logged sensory outcome. */
 export function diagnoseNextCup(log: BrewLog): DialInAdvice {
   if (log.taste === 'sour') return {
     title: 'Проверить экстракцию',
@@ -51,6 +112,7 @@ export function diagnoseNextCup(log: BrewLog): DialInAdvice {
 function adjacentSize(size: GrindSize | undefined, direction: -1 | 1): GrindSize | undefined {
   if (!size) return undefined
   const index = GRIND_SIZES.indexOf(size)
+  if (index < 0) return undefined
   const next = Math.max(0, Math.min(GRIND_SIZES.length - 1, index + direction))
   return GRIND_SIZES[next]
 }
@@ -70,11 +132,11 @@ export function makeTrialRecipe(log: BrewLog): Recipe | undefined {
     steps: log.steps.map((s: BrewStep) => ({ ...s })),
     createdAt: now,
     updatedAt: now,
-    trial: log.taste ? {
+    trial: {
       sourceLogId: log.id,
       variable: log.taste === 'weak' ? 'dose' : 'grind',
       baselineTaste: log.taste,
-    } : undefined,
+    },
   }
 
   if (log.taste === 'sour' || log.taste === 'bitter') {
