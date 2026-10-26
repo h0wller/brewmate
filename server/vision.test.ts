@@ -289,6 +289,29 @@ describe('handle: HTTP-обработчик', () => {
     expect((await res.json()).error).toBe('busy')
     expect(res.headers.get('Retry-After')).not.toBe(null)
   })
+
+  it('GET exposes configured provider IDs and model names but never keys', async () => {
+    const d = deps(fakeFetch({}).f, { GEMINI_API_KEY: 'secret-g', GEMINI_MODEL: 'gemini-test' })
+    const res = await handle(new Request('https://brewmate.app/api/vision'), d)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.providers).toEqual([{ id: 'gemini', model: 'gemini-test', priority: 10 }])
+    expect(JSON.stringify(body)).not.toContain('secret-g')
+  })
+  it('benchmark providerId calls only that configured provider and returns its ID', async () => {
+    const { f, calls } = fakeFetch({ 'generativelanguage': [ok()], 'groq': [ok()] })
+    const res = await handle(post({ ...GOOD, providerId: 'groq' }), deps(f))
+    expect(res.status).toBe(200)
+    expect(calls).toEqual(['groq'])
+    expect(await res.json()).toMatchObject({ provider: 'groq', result: MODEL_JSON })
+  })
+  it('rejects malformed or unconfigured benchmark provider IDs', async () => {
+    const d = deps(fakeFetch({}).f)
+    expect((await handle(post({ ...GOOD, providerId: '../secret' }), d)).status).toBe(400)
+    const res = await handle(post({ ...GOOD, providerId: 'qwen' }), d)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('provider_unavailable')
+  })
 })
 
 describe('validateRequest: задача grind', () => {
