@@ -1,4 +1,4 @@
-import type { BeanProfile, BrewLog } from './types'
+import type { BeanProfile, BrewLog, Recipe } from './types'
 import type { GrindCheck } from './grind/store'
 import { BREW_TASTES, TASTE_LABEL } from './brewlog/taste'
 import { CurveChart } from './CurveChart'
@@ -6,6 +6,7 @@ import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
+import { diagnoseNextCup, makeTrialRecipe } from './beans/dialIn'
 
 export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete }: {
   log: BrewLog
@@ -17,8 +18,11 @@ export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepe
   onRepeat: () => void
   onCheckGrind: () => void
   onDelete: (id: string) => void
+  onMakeTrial: (recipe: Recipe) => void
 }) {
   const set = (p: Partial<BrewLog>) => onChange({ ...log, ...p })
+  const dialIn = diagnoseNextCup(log)
+  const trial = makeTrialRecipe(log)
 
   const pickBean = (id: string) => {
     const b = beans.find(x => x.id === id)
@@ -91,6 +95,19 @@ export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepe
           </button>
         ))}
       </div>
+
+      {log.taste && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <div><b>Следующая проба: {dialIn.title}</b></div>
+          <div className="small">{dialIn.reason}</div>
+          <div>{dialIn.action}</div>
+          <div className="small">
+            Методика: <a href={dialIn.sourceUrl} target="_blank" rel="noreferrer">Barista Hustle — Coffee Compass</a>.
+            Это проверяемая гипотеза, не диагноз: вкус зависит также от зерна, обжарки, воды и равномерности экстракции.
+          </div>
+          {trial && <button className="btn" onClick={() => onMakeTrial(trial)}>Создать отдельный пробный рецепт</button>}
+        </div>
+      )}
 
       <div className="small">Зерно</div>
       <select className="select" value={log.beanId ?? ''} onChange={e => pickBean(e.target.value)}>
