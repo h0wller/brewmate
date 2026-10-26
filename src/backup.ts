@@ -10,9 +10,9 @@ export function makeBackup(
   data: AppData,
   profile: GrinderProfile,
   exportedAt = new Date().toISOString(),
-  dialInProfiles: DialInProfile[] = [],
+  dialInProfiles?: DialInProfile[],
 ) {
-  return { app: 'brewmate', version: 1, exportedAt, ...data, grinderProfile: profile, dialInProfiles: sanitizeDialInProfiles(dialInProfiles) }
+  return { app: 'brewmate', version: 1, exportedAt, ...data, grinderProfile: profile, dialInProfiles: sanitizeDialInProfiles(dialInProfiles ?? data.dialInProfiles) }
 }
 
 export function dialInProfilesToRestore(raw: unknown, current: DialInProfile[]): DialInProfile[] {
