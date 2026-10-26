@@ -63,10 +63,10 @@ describe('recommend', () => {
   it('свежее зерно (3 дня): дольше блюм без автоматического сдвига помола', () => {
     const r = recommend(bean({ roastDate: '2026-10-19' }), 'v60')
     expect(r.bloom).toBe(60)
-    expect(r.nudge).toBe(1)
+    expect(r.nudge).toBe(0)
   })
 
-  it('старое зерно (51 день): мельче помол', () => {
+  it('старое зерно (51 день): нет обязательного сдвига помола', () => {
     const r = recommend(bean({ roastDate: '2026-09-01' }), 'v60')
     expect(r.nudge).toBe(0)
     expect(r.tips.some(t => t.includes('51'))).toBe(true)
