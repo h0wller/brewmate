@@ -32,7 +32,7 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
   const comparable = findBestComparableBrew(log, history, { grinderId: log.grind?.grinder?.id, roastDate: log.beanRoastDate })
   const repeatabilitySource = log.trial && sourceLog ? sourceLog : log
   const repeatability = assessTrialRepeatability(repeatabilitySource, history)
-  const profileAssessment = assessTrialRepeatability(repeatabilitySource, history)
+  const profileAssessment = assessTrialRepeatability(repeatabilitySource, history, log.trial ? log : undefined)
   const candidateProfile = profileFromConfirmedLog(log, profileAssessment)
   const [profiles, setProfiles] = useState(loadDialInProfiles)
   const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method)
