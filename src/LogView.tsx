@@ -1,4 +1,5 @@
 import type { BeanProfile, BrewLog, Recipe } from './types'
+import { loadDialInProfiles, saveDialInProfile, profileFromConfirmedLog, findDialInProfile } from './beans/dialInProfile'
 import type { GrindCheck } from './grind/store'
 import { BREW_TASTES, TASTE_LABEL } from './brewlog/taste'
 import { CurveChart } from './CurveChart'
@@ -7,6 +8,7 @@ import { formatGrind } from './grinders/grind'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
 import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './beans/dialIn'
+import { useState } from 'react'
 
 export function LogView({ log, sourceLog, history, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
   log: BrewLog
@@ -28,7 +30,12 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
   const trialAssessment = log.trial ? assessTrialOutcome(sourceLog, log) : undefined
   const referenceAssessment = log.reference ? assessTrialOutcome(sourceLog, log) : undefined
   const comparable = findBestComparableBrew(log, history, { grinderId: log.grind?.grinder?.id, roastDate: log.beanRoastDate })
-  const repeatability = assessTrialRepeatability(log, history)
+  const repeatabilitySource = log.trial && sourceLog ? sourceLog : log
+  const repeatability = assessTrialRepeatability(repeatabilitySource, history)
+  const profileAssessment = assessTrialRepeatability(repeatabilitySource, history)
+  const candidateProfile = profileFromConfirmedLog(log, profileAssessment)
+  const [profiles, setProfiles] = useState(loadDialInProfiles)
+  const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method)
   const relatedTrials = history.filter(item => item.trial?.sourceLogId === log.id && item.method === log.method)
 
   const pickBean = (id: string) => {
@@ -131,6 +138,28 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
               {referenceAssessment.evidence.map((item, i) => <div className="small" key={i}>• {item}</div>)}
             </div>
           )}
+        </div>
+      )}
+
+      {candidateProfile && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Повторяемая настройка подтверждена для этой пробы</b>
+          <div className="small">
+            Подтверждение основано на {candidateProfile.positiveTrials} положительных пробах из {candidateProfile.totalTrials}.
+            Профиль сохраняется отдельно от ручной калибровки и привязан к зерну «{candidateProfile.beanName ?? candidateProfile.beanId}» и дате обжарки {candidateProfile.roastDate}.
+          </div>
+          <div>
+            {candidateProfile.doseG} г кофе / {candidateProfile.waterG} г воды · {candidateProfile.tempC} °C
+            {candidateProfile.grindSize ? ` · ${candidateProfile.grindSize}` : ''}
+            {candidateProfile.grinderSetting ? ` · ${candidateProfile.grinderSetting}` : ''}
+          </div>
+          <button className="btn" onClick={() => {
+            saveDialInProfile(candidateProfile)
+            setProfiles(loadDialInProfiles())
+          }}>
+            {savedProfile?.sourceLogId === log.id ? 'Обновить сохранённый профиль' : 'Сохранить как профиль кофемолка × метод'}
+          </button>
+          <div className="small">Это подтверждённый снимок конкретной чашки, а не универсальный рецепт для любого зерна. Он не изменяет ручную калибровку кофемолки и не применяется автоматически к другим партиям.</div>
         </div>
       )}
 
