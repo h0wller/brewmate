@@ -80,6 +80,8 @@ describe('промпт: доза и вода', () => {
     const devicePrompt = buildPackagePrompt('Moccamaster', { doseG: 30, bean: { process: 'honey', roastLevel: 'light', roastDate: '2026-10-01' } })
     expect(devicePrompt).toContain('Moccamaster')
     expect(devicePrompt).toContain('машинный цикл')
+    expect(devicePrompt).toContain('приложение рассчитывает')
+    expect(devicePrompt).not.toContain('"tempC": 88-96')
     expect(devicePrompt).toContain('обработка: honey')
     expect(devicePrompt).toContain('обжарка: light')
     expect(devicePrompt).toContain('2026-10-01')
