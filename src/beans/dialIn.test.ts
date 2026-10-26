@@ -222,6 +222,17 @@ describe('assessTrialRepeatability', () => {
     expect(result.summary).toContain('не универсальность')
   })
 
+  it('does not combine different experimental settings into one repeatability claim', () => {
+    const target = trial('target', 4, 'balanced')
+    target.grind = { ...target.grind!, setting: '30 clicks' }
+    const matching = { ...target, id: 'matching' }
+    const otherSetting = { ...trial('other-setting', 5, 'balanced'), grind: { ...target.grind!, setting: '28 clicks' } }
+    const result = assessTrialRepeatability(source, [matching, otherSetting, { ...matching, id: 'matching-2' }, { ...matching, id: 'matching-3' }], target)
+    expect(result.status).toBe('confirmed')
+    expect(result.trials).toBe(3)
+    expect(result.positive).toBe(3)
+  })
+
   it('keeps a mostly positive series provisional if any trial is worse', () => {
     const result = assessTrialRepeatability(source, [
       trial('t1', 4, 'balanced'),
