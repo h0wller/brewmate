@@ -5,6 +5,7 @@ import { BREW_TASTES, TASTE_LABEL } from './brewlog/taste'
 import { CurveChart } from './CurveChart'
 import { fmtDate } from './brewlog/format'
 import { formatGrind } from './grinders/grind'
+import { SIZE_LABEL } from './grinders/size'
 import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
 import { assessTrialOutcome, assessTrialRepeatability, assessTrialEvidenceConfidence, diagnoseNextCup, findBestComparableBrew, planNextExperiment } from './beans/dialIn'
@@ -39,7 +40,7 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
     : undefined
   const candidateProfile = profileFromConfirmedLog(log, profileAssessment)
   const [profiles, setProfiles] = useState(loadDialInProfiles)
-  const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method, log.beanId, log.beanRoastDate)
+  const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method, { matchBean: true, beanId: log.beanId, matchRoastDate: true, roastDate: log.beanRoastDate })
   const relatedTrials = history.filter(item => item.trial?.sourceLogId === log.id && item.method === log.method)
 
   const pickBean = (id: string) => {
@@ -154,7 +155,7 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
           </div>
           <div>
             {candidateProfile.doseG} г кофе / {candidateProfile.waterG} г воды · {candidateProfile.tempC} °C
-            {candidateProfile.grindSize ? ` · ${candidateProfile.grindSize}` : ''}
+            {candidateProfile.grindSize ? ` · ${SIZE_LABEL[candidateProfile.grindSize]}` : ''}
             {candidateProfile.grinderSetting ? ` · ${candidateProfile.grinderSetting}` : ''}
           </div>
           <button className="btn" onClick={() => {
