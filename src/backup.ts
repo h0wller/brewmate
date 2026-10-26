@@ -1,11 +1,24 @@
 import type { GrinderProfile } from './types'
 import type { AppData } from './sync/merge'
 import { hasCalibration, sanitizeProfile } from './grinders/profile'
+import { sanitizeDialInProfiles, upsertDialInProfile } from './beans/dialInProfile'
+import type { DialInProfile } from './beans/dialInProfile'
 
 /* Файл резервной копии: все данные для синхронизации + «Моя кофемолка» (она в синхронизацию не входит,
    но терять её при переезде на новый телефон не нужно) */
-export function makeBackup(data: AppData, profile: GrinderProfile, exportedAt = new Date().toISOString()) {
-  return { app: 'brewmate', version: 1, exportedAt, ...data, grinderProfile: profile }
+export function makeBackup(
+  data: AppData,
+  profile: GrinderProfile,
+  exportedAt = new Date().toISOString(),
+  dialInProfiles: DialInProfile[] = [],
+) {
+  return { app: 'brewmate', version: 1, exportedAt, ...data, grinderProfile: profile, dialInProfiles: sanitizeDialInProfiles(dialInProfiles) }
+}
+
+export function dialInProfilesToRestore(raw: unknown, current: DialInProfile[]): DialInProfile[] {
+  const root = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+  const incoming = sanitizeDialInProfiles(root.dialInProfiles)
+  return incoming.reduce((profiles, item) => upsertDialInProfile(profiles, item), sanitizeDialInProfiles(current))
 }
 
 export const hasProfile = (p: GrinderProfile): boolean => Boolean(p.grinder) || hasCalibration(p)
