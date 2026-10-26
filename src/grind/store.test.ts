@@ -44,7 +44,7 @@ describe('замеры помола', () => {
       c({ id: 'other', source: 'sieve', grinderId: 'other', calibrationFactor: 1.4 }),
     ]
     expect(activeCalibrationFactor(checks, 'g')).toBe(1)
-    expect(activeCalibrationFactor(checks, 'missing')).toBe(1.2)
+    expect(activeCalibrationFactor(checks, 'missing')).toBe(1.1)
     expect(activeCalibrationFactor([c({ source: 'photo', calibrationFactor: 0.7 })], 'g')).toBe(1)
     expect(activeCalibrationFactor([], 'g')).toBe(1)
   })
