@@ -8,8 +8,9 @@ import { fmt } from './useBrewTimer'
 import { stepStats } from './brewlog/curve'
 import { diagnoseNextCup, makeTrialRecipe } from './beans/dialIn'
 
-export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
+export function LogView({ log, sourceLog, beans, canRepeat, check, onChange, onBack, onRepeat, onCheckGrind, onDelete, onMakeTrial }: {
   log: BrewLog
+  sourceLog?: BrewLog
   beans: BeanProfile[]
   canRepeat: boolean         // исходный рецепт ещё существует
   check?: GrindCheck         // последний замер помола, привязанный к этой записи
@@ -73,6 +74,29 @@ export function LogView({ log, beans, canRepeat, check, onChange, onBack, onRepe
           </ul>
           <div className="small" style={{ marginTop: 0 }}>налито факт/план, г · скорость факт/план, г/с</div>
         </>
+      )}
+
+      {log.trial && (
+        <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 12 }}>
+          <b>Контролируемая проба</b>
+          <div className="small">
+            Проверяемый параметр: {log.trial.variable === 'dose' ? 'доза кофе' : 'крупность помола'}.
+            Исходная чашка: {sourceLog?.title ?? 'запись недоступна'}.
+          </div>
+          {sourceLog && (
+            <div>
+              Было: {sourceLog.taste ? TASTE_LABEL[sourceLog.taste] : 'вкус не отмечен'}
+              {sourceLog.rating !== undefined ? ` · оценка ${sourceLog.rating}/5` : ''}
+              {' → '}
+              Сейчас: {log.taste ? TASTE_LABEL[log.taste] : 'отметь вкус ниже'}
+              {log.rating !== undefined ? ` · оценка ${log.rating}/5` : ''}
+              {sourceLog.rating !== undefined && log.rating !== undefined && (
+                <div><b>Изменение оценки: {log.rating - sourceLog.rating > 0 ? '+' : ''}{log.rating - sourceLog.rating}/5.</b></div>
+              )}
+            </div>
+          )}
+          <div className="small">Чтобы результат был полезен, сравнивай вкус и оценку, меняя за одну пробу только один параметр.</div>
+        </div>
       )}
 
       <div className="small">Оценка</div>
