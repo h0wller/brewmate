@@ -5,6 +5,7 @@ import type { Tombstones } from './sync/merge'
 import { safeWrite } from './storageError'
 import { GRIND_CHECKS_KEY, PHOTO_GRIND_PROFILES_KEY, loadChecks, saveChecks } from './grind/store'
 import { GRINDER_KEY } from './grinders/profile'
+import { DIAL_IN_PROFILES_KEY } from './beans/dialInProfile'
 
 const RKEY = 'brewmate.recipes.v1'
 const CKEY = 'brewmate.cupping.v1'
@@ -13,7 +14,7 @@ const LKEY = 'brewmate.logs.v1'
 const DKEY = 'brewmate.deleted.v1'
 
 /* ключи с пользовательскими данными (без ключей AI и синхронизации — там секреты) */
-export const DATA_KEYS = [RKEY, CKEY, BKEY, LKEY, DKEY, GRIND_CHECKS_KEY, PHOTO_GRIND_PROFILES_KEY, GRINDER_KEY]
+export const DATA_KEYS = [RKEY, CKEY, BKEY, LKEY, DKEY, GRIND_CHECKS_KEY, PHOTO_GRIND_PROFILES_KEY, DIAL_IN_PROFILES_KEY, GRINDER_KEY]
 export { loadChecks, saveChecks }
 
 function readList<T extends { id: string }>(key: string): T[] {
