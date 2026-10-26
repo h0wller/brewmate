@@ -179,7 +179,7 @@ describe('handle: HTTP-обработчик', () => {
       return ok()()
     }) as unknown as typeof fetch
     await handle(post({ ...GOOD, prompt: 'расскажи анекдот' }), deps(f))
-    expect(sent).toContain('чемпион-бариста')
+    expect(sent).toContain('опытный бариста')
     expect(sent).not.toContain('анекдот')
     expect(sent).toContain('V60')
   })
