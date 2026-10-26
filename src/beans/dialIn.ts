@@ -218,3 +218,67 @@ export function recipeFromBestHistoricalBrew(
     updatedAt: now,
   }
 }
+
+
+export interface RepeatabilityAssessment {
+  status: 'confirmed' | 'promising' | 'inconsistent' | 'insufficient'
+  trials: number
+  positive: number
+  worse: number
+  unchanged: number
+  summary: string
+}
+
+/**
+ * Assess repeatability across independent recorded trials of the same hypothesis.
+ * A single cup cannot confirm a setting; require at least three sensory-rated trials,
+ * and a two-thirds positive share, before calling the result repeatable.
+ */
+export function assessTrialRepeatability(source: BrewLog, history: BrewLog[]): RepeatabilityAssessment {
+  const trials = history.filter(log =>
+    log.trial?.sourceLogId === source.id &&
+    log.method === source.method &&
+    log.id !== source.id &&
+    (log.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
+    (log.taste !== undefined || log.rating !== undefined),
+  )
+
+  let positive = 0
+  let worse = 0
+  let unchanged = 0
+  for (const trial of trials) {
+    const ratingDelta = source.rating !== undefined && trial.rating !== undefined
+      ? trial.rating - source.rating
+      : undefined
+    const tasteImproved = Boolean(source.taste && trial.taste &&
+      source.taste !== 'balanced' && trial.taste === 'balanced')
+    const tasteWorse = Boolean(source.taste === 'balanced' && trial.taste && trial.taste !== 'balanced')
+    if ((ratingDelta !== undefined && ratingDelta > 0 && !tasteWorse) ||
+      (tasteImproved && !(ratingDelta !== undefined && ratingDelta < 0))) positive++
+    else if ((ratingDelta !== undefined && ratingDelta < 0) || tasteWorse) worse++
+    else unchanged++
+  }
+
+  if (trials.length < 3) return {
+    status: 'insufficient', trials: trials.length, positive, worse, unchanged,
+    summary: `Для оценки повторяемости нужно минимум 3 записанные пробы с сенсорной оценкой. Сейчас доступно: ${trials.length}.`,
+  }
+
+  const positiveShare = positive / trials.length
+  if (positiveShare >= 2 / 3 && worse === 0) return {
+    status: 'confirmed', trials: trials.length, positive, worse, unchanged,
+    summary: 'Результат повторяется в большинстве записанных проб без отмеченного ухудшения. Это подтверждает практическую воспроизводимость в этих условиях, но не универсальность настройки.',
+  }
+  if (positiveShare >= 2 / 3) return {
+    status: 'promising', trials: trials.length, positive, worse, unchanged,
+    summary: 'Большинство проб положительные, но есть и ухудшение. Результат перспективный, однако настройку пока рано считать устойчивой.',
+  }
+  if (worse > positive) return {
+    status: 'inconsistent', trials: trials.length, positive, worse, unchanged,
+    summary: 'Результаты не подтверждают устойчивое улучшение. Проверь повторяемость дозы, воды, зерна и техники перед дальнейшими изменениями.',
+  }
+  return {
+    status: 'inconsistent', trials: trials.length, positive, worse, unchanged,
+    summary: 'Результаты смешанные: пока недостаточно оснований считать настройку воспроизводимо лучшей.',
+  }
+}
