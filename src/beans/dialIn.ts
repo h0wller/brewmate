@@ -282,3 +282,47 @@ export function assessTrialRepeatability(source: BrewLog, history: BrewLog[]): R
     summary: 'Результаты смешанные: пока недостаточно оснований считать настройку воспроизводимо лучшей.',
   }
 }
+
+
+export interface BeanHistoryEvidence {
+  brews: number
+  ratedBrews: number
+  balancedBrews: number
+  meanRating?: number
+  meanRatio?: number
+  medianTempC?: number
+  grindSizes: string[]
+  roastDate?: string
+}
+
+/**
+ * Summarize only comparable brews: exact bean identity, method, grinder model and
+ * roast-date snapshot. Missing historical snapshots are not silently treated as matches.
+ */
+export function summarizeBeanHistory(
+  bean: { id: string; roastDate?: string },
+  method: string,
+  grinderId: string | undefined,
+  history: BrewLog[],
+): BeanHistoryEvidence {
+  const comparable = history.filter(log =>
+    log.beanId === bean.id &&
+    log.method === method &&
+    (log.grind?.grinder?.id ?? undefined) === grinderId &&
+    (bean.roastDate ? log.beanRoastDate === bean.roastDate : !log.beanRoastDate),
+  )
+  const rated = comparable.filter(log => log.rating !== undefined && Number.isFinite(log.rating))
+  const temps = comparable.map(log => log.tempC).filter(Number.isFinite).sort((a, b) => a - b)
+  const ratios = comparable.filter(log => log.doseG > 0 && log.waterG > 0).map(log => log.waterG / log.doseG)
+  const sizes = [...new Set(comparable.map(log => log.grind?.size).filter((v): v is GrindSize => Boolean(v)))]
+  return {
+    brews: comparable.length,
+    ratedBrews: rated.length,
+    balancedBrews: comparable.filter(log => log.taste === 'balanced').length,
+    meanRating: rated.length ? Math.round((rated.reduce((sum, log) => sum + (log.rating ?? 0), 0) / rated.length) * 10) / 10 : undefined,
+    meanRatio: ratios.length ? Math.round((ratios.reduce((sum, value) => sum + value, 0) / ratios.length) * 10) / 10 : undefined,
+    medianTempC: temps.length ? temps[Math.floor((temps.length - 1) / 2)] : undefined,
+    grindSizes: sizes,
+    roastDate: bean.roastDate,
+  }
+}
