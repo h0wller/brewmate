@@ -497,7 +497,16 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
 
   const providers = loadProviders(deps.env)
   if (req.method === 'GET') {
-    return json(200, { providers: providers.map(p => ({ id: p.id, model: p.model, priority: p.priority ?? 100 })), maxImageChars: loadLimits(deps.env).maxImageChars })
+    return json(200, {
+      providers: providers.map(p => ({ id: p.id, model: p.model, priority: p.priority ?? 100 })),
+      providerStatus: [
+        ...PROVIDER_REGISTRY.map(p => ({ id: p.id, model: deps.env[p.modelEnv]?.trim() || p.model, configured: !!deps.env[p.keyEnv]?.trim() })),
+        ...(deps.env.AI_COMPAT_PROVIDER_ID?.trim() || deps.env.AI_COMPAT_MODEL?.trim() || deps.env.AI_COMPAT_BASE_URL?.trim() || deps.env.AI_COMPAT_API_KEY?.trim()
+          ? [{ id: deps.env.AI_COMPAT_PROVIDER_ID?.trim() || 'compatible', model: deps.env.AI_COMPAT_MODEL?.trim() || 'OpenAI-compatible model', configured: !!(deps.env.AI_COMPAT_API_KEY?.trim() && deps.env.AI_COMPAT_BASE_URL?.trim() && deps.env.AI_COMPAT_MODEL?.trim() && validProviderBaseUrl((deps.env.AI_COMPAT_BASE_URL ?? '').trim())) }]
+          : []),
+      ],
+      maxImageChars: loadLimits(deps.env).maxImageChars,
+    })
   }
 
   const limits = loadLimits(deps.env)
