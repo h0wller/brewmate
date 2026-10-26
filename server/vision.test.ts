@@ -296,6 +296,7 @@ describe('handle: HTTP-обработчик', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.providers).toEqual([{ id: 'gemini', model: 'gemini-test', priority: 10 }])
+    expect(body.maxImageChars).toBe(1_500_000)
     expect(JSON.stringify(body)).not.toContain('secret-g')
   })
   it('benchmark providerId calls only that configured provider and returns its ID', async () => {
