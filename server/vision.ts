@@ -11,24 +11,76 @@ import { isGrindSize } from '../src/grinders/size.js'
 
 export type Env = Record<string, string | undefined>
 
-export interface Provider { id: string; baseUrl: string; model: string; key: string }
+export type ProviderProtocol = 'openai-chat-completions'
 
-/* Порядок = приоритет. Провайдер включается, если задан его ключ; модель можно сменить переменной
-   <ID>_MODEL без выпуска приложения (названия моделей у бесплатных тарифов меняются). */
-const KNOWN = [
-  { id: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash' },
-  { id: 'groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'meta-llama/llama-4-scout-17b-16e-instruct' },
-  { id: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.2-11b-vision-instruct:free' },
+export interface Provider {
+  id: string
+  baseUrl: string
+  model: string
+  key: string
+  protocol?: ProviderProtocol
+  supportsVision?: boolean
+  priority?: number
+}
+
+export interface ProviderDefinition {
+  id: string
+  baseUrl: string
+  model: string
+  keyEnv: string
+  modelEnv: string
+  priority: number
+  protocol: ProviderProtocol
+  supportsVision: boolean
+}
+
+/* Реестр описывает только провайдеры, для которых известны URL и vision-совместимость.
+   Порядок приоритета задаётся явно, секреты никогда не входят в публичное описание. */
+export const PROVIDER_REGISTRY: readonly ProviderDefinition[] = [
+  { id: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-3.5-flash', keyEnv: 'GEMINI_API_KEY', modelEnv: 'GEMINI_MODEL', priority: 10, protocol: 'openai-chat-completions', supportsVision: true },
+  { id: 'groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'meta-llama/llama-4-scout-17b-16e-instruct', keyEnv: 'GROQ_API_KEY', modelEnv: 'GROQ_MODEL', priority: 20, protocol: 'openai-chat-completions', supportsVision: true },
+  { id: 'openrouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'meta-llama/llama-3.2-11b-vision-instruct:free', keyEnv: 'OPENROUTER_API_KEY', modelEnv: 'OPENROUTER_MODEL', priority: 30, protocol: 'openai-chat-completions', supportsVision: true },
+  { id: 'qwen', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', model: 'qwen-vl-max', keyEnv: 'QWEN_API_KEY', modelEnv: 'QWEN_MODEL', priority: 40, protocol: 'openai-chat-completions', supportsVision: true },
 ]
+
+/* Неизвестные агрегаторы подключаются отдельным OpenAI-compatible слотом без изменения кода.
+   Разрешаем только HTTPS и не допускаем credentials/query/hash в base URL. */
+export function validProviderBaseUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' && !!u.hostname && !u.username && !u.password && !u.search && !u.hash
+  } catch {
+    return false
+  }
+}
 
 export function loadProviders(env: Env): Provider[] {
   const out: Provider[] = []
-  for (const p of KNOWN) {
-    const name = p.id.toUpperCase()
-    const key = env[`${name}_API_KEY`]?.trim()
-    if (key) out.push({ ...p, key, model: env[`${name}_MODEL`]?.trim() || p.model })
+  for (const p of PROVIDER_REGISTRY) {
+    const key = env[p.keyEnv]?.trim()
+    if (!key) continue
+    out.push({
+      id: p.id, baseUrl: p.baseUrl, key,
+      model: env[p.modelEnv]?.trim() || p.model,
+      protocol: p.protocol, supportsVision: p.supportsVision, priority: p.priority,
+    })
   }
-  return out
+
+  const compatibleKey = env.AI_COMPAT_API_KEY?.trim()
+  const compatibleUrl = env.AI_COMPAT_BASE_URL?.trim()
+  const compatibleModel = env.AI_COMPAT_MODEL?.trim()
+  if (compatibleKey && compatibleUrl && compatibleModel && validProviderBaseUrl(compatibleUrl)) {
+    const rawId = env.AI_COMPAT_PROVIDER_ID?.trim() || 'compatible'
+    const id = /^[a-zA-Z0-9_-]{1,32}$/.test(rawId) ? rawId : 'compatible'
+    if (!out.some(p => p.id === id)) {
+      out.push({
+        id, baseUrl: compatibleUrl.replace(/\/$/, ''), key: compatibleKey,
+        model: compatibleModel, protocol: 'openai-chat-completions',
+        supportsVision: true, priority: 100,
+      })
+    }
+  }
+  return out.sort((a, b) => (a.priority ?? 1000) - (b.priority ?? 1000))
 }
 
 export interface Limits { perUserPerDay: number; globalPerDay: number; maxImageChars: number }
@@ -126,6 +178,11 @@ export interface CounterStore {
   incr(key: string, ttlS: number): Promise<number>
 }
 
+export interface ProviderStateStore {
+  get(key: string): Promise<string | null>
+  set(key: string, value: string, ttlS: number): Promise<void>
+}
+
 export function memoryStore(now: () => number = Date.now): CounterStore {
   const m = new Map<string, { n: number; exp: number }>()
   return {
@@ -156,6 +213,24 @@ export function upstashStore(url: string, token: string, fetchFn: typeof fetch):
       const n = Number(out?.[0]?.result)
       if (!Number.isFinite(n)) throw new Error('upstash: неожиданный ответ')
       return n
+    },
+  }
+}
+
+/** Общие provider cooldowns для serverless-инстансов. Ошибка Redis не должна ломать сам AI. */
+export function upstashProviderStateStore(url: string, token: string, fetchFn: typeof fetch): ProviderStateStore {
+  const endpoint = url.replace(/\/$/, '')
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  return {
+    async get(key) {
+      const res = await fetchFn(endpoint, { method: 'POST', headers, body: JSON.stringify(['GET', key]) })
+      if (!res.ok) throw new Error(`upstash state get ${res.status}`)
+      const data = await res.json() as { result?: unknown }
+      return typeof data.result === 'string' ? data.result : null
+    },
+    async set(key, value, ttlS) {
+      const res = await fetchFn(endpoint, { method: 'POST', headers, body: JSON.stringify(['SET', key, value, 'EX', Math.max(1, Math.ceil(ttlS))]) })
+      if (!res.ok) throw new Error(`upstash state set ${res.status}`)
     },
   }
 }
@@ -320,6 +395,24 @@ export function cooldownS(e: ProviderError): number {
 export interface Health { until: Map<string, number>; lastGood?: string }
 export const newHealth = (): Health => ({ until: new Map() })
 
+const HEALTH_PREFIX = 'ai:vision:provider-until:'
+const LAST_GOOD_KEY = 'ai:vision:last-good'
+
+async function readSharedHealth(store: ProviderStateStore | undefined, providers: Provider[], health: Health, now: number, log: (m: string) => void): Promise<void> {
+  if (!store) return
+  try {
+    const values = await Promise.all(providers.map(async p => [p.id, await store.get(HEALTH_PREFIX + p.id)] as const))
+    for (const [id, raw] of values) {
+      const until = Number(raw)
+      if (raw && Number.isFinite(until) && until > now) health.until.set(id, Math.max(health.until.get(id) ?? 0, until))
+    }
+    const lastGood = await store.get(LAST_GOOD_KEY)
+    if (lastGood && providers.some(p => p.id === lastGood)) health.lastGood = lastGood
+  } catch (e) {
+    log(`vision: shared provider state unavailable: ${(e as Error).message.slice(0, 100)}`)
+  }
+}
+
 export type VisionOutcome =
   | { ok: true; result: unknown; provider: string }
   | { ok: false; reason: 'busy'; retryAfterS: number }
@@ -327,10 +420,13 @@ export type VisionOutcome =
 export async function runVision(
   fetchFn: typeof fetch, providers: Provider[], req: VisionRequest, health: Health,
   now: number, timeoutMs = 25_000, log: (m: string) => void = () => {},
+  sharedState?: ProviderStateStore,
 ): Promise<VisionOutcome> {
-  const free = providers.filter(p => (health.until.get(p.id) ?? 0) <= now)
+  await readSharedHealth(sharedState, providers, health, now, log)
+  const eligible = providers.filter(p => p.supportsVision !== false && (p.protocol === undefined || p.protocol === 'openai-chat-completions'))
+  const free = eligible.filter(p => (health.until.get(p.id) ?? 0) <= now)
   if (!free.length) {
-    const soon = Math.min(...providers.map(p => health.until.get(p.id) ?? 0))
+    const soon = Math.min(...eligible.map(p => health.until.get(p.id) ?? 0))
     return { ok: false, reason: 'busy', retryAfterS: Math.max(1, Math.ceil((soon - now) / 1000)) }
   }
   const ordered = [...free.filter(p => p.id === health.lastGood), ...free.filter(p => p.id !== health.lastGood)]
@@ -338,11 +434,22 @@ export async function runVision(
     try {
       const result = await callProvider(fetchFn, p, req, timeoutMs)
       health.lastGood = p.id
+      if (sharedState) {
+        try { await sharedState.set(LAST_GOOD_KEY, p.id, 86_400) }
+        catch (e) { log(`vision: could not persist last-good provider: ${(e as Error).message.slice(0, 100)}`) }
+      }
       return { ok: true, result, provider: p.id }
     } catch (e) {
       const err = e as ProviderError
       const cd = cooldownS(err)
-      if (cd > 0) health.until.set(p.id, now + cd * 1000)
+      if (cd > 0) {
+        const until = now + cd * 1000
+        health.until.set(p.id, until)
+        if (sharedState) {
+          try { await sharedState.set(HEALTH_PREFIX + p.id, String(until), cd) }
+          catch (stateError) { log(`vision: could not persist cooldown: ${(stateError as Error).message.slice(0, 100)}`) }
+        }
+      }
       log(`vision: ${p.id} ${err.status} ${err.message.slice(0, 120)}`)
     }
   }
@@ -356,6 +463,7 @@ export interface Deps {
   fetch: typeof fetch
   store: CounterStore
   health: Health
+  providerState?: ProviderStateStore
   now: () => number
   log?: (m: string) => void
 }
@@ -406,7 +514,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   }
   if (!lim.ok) return json(429, { error: 'limit', scope: lim.scope, resetAt: lim.resetAt })
 
-  const out = await runVision(deps.fetch, providers, v.value, deps.health, now, 25_000, deps.log)
+  const out = await runVision(deps.fetch, providers, v.value, deps.health, now, 25_000, deps.log, deps.providerState)
   if (!out.ok) return json(503, { error: 'busy', retryAfterS: out.retryAfterS }, { 'Retry-After': String(out.retryAfterS) })
   return json(200, { result: out.result })
 }
