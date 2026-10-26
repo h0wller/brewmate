@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
-import { assessTrialOutcome, diagnoseNextCup, makeTrialRecipe } from './dialIn'
+import { assessTrialOutcome, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   id: 'log-1',
@@ -93,5 +93,29 @@ describe('assessTrialOutcome', () => {
 
   it('handles deleted source logs explicitly', () => {
     expect(assessTrialOutcome(undefined, log()).verdict).toBe('inconclusive')
+  })
+})
+
+
+describe('findBestComparableBrew', () => {
+  it('returns a high-rated balanced cup only for the same bean and method', () => {
+    const current = log({ id: 'current', beanId: 'bean-1', taste: 'sour' })
+    const unrelatedBean = log({ id: 'other-bean', beanId: 'bean-2', rating: 5, taste: 'balanced', startedAt: 10 })
+    const otherMethod = log({ id: 'other-method', beanId: 'bean-1', method: 'v60', rating: 5, taste: 'balanced', startedAt: 20 })
+    const reference = log({ id: 'reference', beanId: 'bean-1', rating: 4, taste: 'balanced', startedAt: 30 })
+    const higher = log({ id: 'higher', beanId: 'bean-1', rating: 5, taste: 'balanced', startedAt: 40 })
+    expect(findBestComparableBrew(current, [unrelatedBean, otherMethod, reference, higher])).toBe(higher)
+  })
+
+  it('does not infer a historical reference without a bean identity', () => {
+    const current = log({ beanId: undefined, beanName: undefined })
+    const candidate = log({ id: 'candidate', rating: 5, taste: 'balanced' })
+    expect(findBestComparableBrew(current, [candidate])).toBeUndefined()
+  })
+
+  it('does not treat a high rating without balanced taste as a confirmed reference', () => {
+    const current = log({ beanId: 'bean-1' })
+    const candidate = log({ id: 'candidate', beanId: 'bean-1', rating: 5, taste: 'sour' })
+    expect(findBestComparableBrew(current, [candidate])).toBeUndefined()
   })
 })
