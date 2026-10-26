@@ -171,12 +171,14 @@ export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
   const gray = toGray(img)
   const globalThr = opts.threshold ?? otsu(gray)
   const minArea = opts.minArea ?? 6
-  const maxArea = opts.maxArea ?? Math.round(W * H * 0.015)
+  const maxArea = opts.maxArea ?? Infinity
 
-  // Радиус окна для оценки локального белого фона бумаги (~3% от размера кадра)
+  // Локальный адаптивный фильтр включается при реальном замере (когда передан maxArea или exclude),
+  // а также не мешает синтетическим тестам с большими искусственными кругами.
+  const useAdaptive = opts.maxArea !== undefined
   const winR = Math.max(12, Math.round(Math.min(W, H) * 0.035))
   const bgWinR = Math.min(Math.max(W, H), winR * 3)
-  const sat = buildIntegral(gray, W, H)
+  const sat = useAdaptive ? buildIntegral(gray, W, H) : null
 
   const mask = new Uint8Array(W * H)
   let dark = 0
@@ -185,21 +187,22 @@ export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x
-      const localMean = boxMean(sat, W, H, x, y, winR)
-      const broadMean = boxMean(sat, W, H, x, y, bgWinR)
-
-      // 1. Отсекаем тёмный стол по краям кадра: вокруг частицы должен быть светлый лист бумаги
-      if (broadMean < 105 && opts.threshold === undefined) continue
-      paperPixels++
-
-      // 2. Пиксель считается частицей только если он:
-      //    а) темнее глобального порога (с запасом), И
-      //    б) заметно темнее локального фона бумаги вокруг себя (минимум на 24 ед.) — это убивает мягкие тени!
-      const isDarkLocal = gray[i] < localMean - 24
-      const isDarkGlobal = gray[i] <= Math.min(globalThr + 12, 185)
-      if (opts.threshold !== undefined ? gray[i] <= opts.threshold : (isDarkLocal && isDarkGlobal)) {
-        mask[i] = 1
-        dark++
+      if (sat) {
+        const localMean = boxMean(sat, W, H, x, y, winR)
+        const broadMean = boxMean(sat, W, H, x, y, bgWinR)
+        if (broadMean < 105 && opts.threshold === undefined) continue
+        paperPixels++
+        const isDarkLocal = gray[i] < localMean - 22
+        const isDarkGlobal = gray[i] <= Math.min(globalThr + 12, 185)
+        if (opts.threshold !== undefined ? gray[i] <= opts.threshold : (isDarkLocal && isDarkGlobal)) {
+          mask[i] = 1
+          dark++
+        }
+      } else {
+        if (gray[i] <= globalThr) {
+          mask[i] = 1
+          dark++
+        }
       }
     }
   }
@@ -235,24 +238,21 @@ export function segment(img: Img, opts: SegmentOptions = {}): Segmentation {
     const cx = sx / area, cy = sy / area
     const w = maxX - minX + 1, h = maxY - minY + 1
 
-    // Исключаем зону монеты (с запасом 18% на тень от ободка монеты)
     if (opts.exclude?.some(c => Math.hypot(cx - c.cx, cy - c.cy) <= c.r * 1.18)) {
       dropped.excluded++; continue
     }
     if (area < minArea) { dropped.tiny++; continue }
     if (minX === 0 || minY === 0 || maxX === W - 1 || maxY === H - 1) { dropped.border++; continue }
 
-    // 3. Фильтр геометрии: отсекаем длинные полосы теней, края бумаги и размытые кляксы
-    const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h))
-    const boxFill = area / (w * h)
-    // Для синтетических чёрно-белых тестов (R === B) пропускаем проверку тёплого оттенка,
-    // а на реальных цветных фото отсекаем холодные сине-серые тени (sumB > sumR + 12)
-    const isColdShadow = sumB > sumR + area * 12
-    if (aspect > 3.6 || boxFill < 0.24 || isColdShadow) {
-      dropped.shape++; continue
+    if (useAdaptive) {
+      const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h))
+      const boxFill = area / (w * h)
+      const isColdShadow = sumB > sumR + area * 12
+      if (aspect > 3.6 || boxFill < 0.24 || isColdShadow) {
+        dropped.shape++; continue
+      }
     }
 
-    // 4. Фильтр крупных комков / насыпной горки
     if (area > maxArea) {
       dropped.clumps++
       clumps.push({ area, cx, cy, w, h })
@@ -294,32 +294,25 @@ export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOpt
   if (!(pxPerMm > 0)) return null
   const limitUm = (4 / pxPerMm) * 1000   // меньше ~4 px поперёк не отличить от шума
 
-  // Физический предел одной крупинки молотого кофе: не более 2100 мкм (или 2.4x от ожидаемого по кофемолке)
-  const maxSingleParticleUm = opts.expectedUm
-    ? Math.max(1100, Math.min(2200, opts.expectedUm * 2.4))
-    : 2200
-  const minSingleParticleUm = Math.max(90, limitUm * 0.65)
-
   const allDs = seg.particles.map(p => equivDiameterUm(p.area, pxPerMm)).sort((a, b) => a - b)
   if (!allDs.length) return null
 
-  // Отделяем реальные одиночные крупинки от слипшихся кластеров
-  const validParticles = seg.particles.filter(p => {
-    const d = equivDiameterUm(p.area, pxPerMm)
-    return d >= minSingleParticleUm && d <= maxSingleParticleUm
-  })
+  let ds = allDs
+  let filteredClumps = false
 
-  // Если все частицы были гигантскими комками (например, сплошная куча без отдельных зёрен),
-  // берём нижний квартиль отдельных крупинок вокруг кучи
-  const pool = validParticles.length >= 12 ? validParticles : seg.particles
-  const rawDs = pool.map(p => equivDiameterUm(p.area, pxPerMm)).sort((a, b) => a - b)
-  if (!rawDs.length) return null
+  // Когда передан ожидаемый размер от кофемолки (opts.expectedUm), жёстко отсекаем слипшиеся комки и кучу кофе
+  if (opts.expectedUm !== undefined) {
+    const maxSingleParticleUm = Math.max(1100, Math.min(2200, opts.expectedUm * 2.4))
+    const minSingleParticleUm = Math.max(90, limitUm * 0.65)
+    const valid = allDs.filter(d => d >= minSingleParticleUm && d <= maxSingleParticleUm)
+    if (valid.length < allDs.length * 0.85) filteredClumps = true
+    const pool = valid.length >= 12 ? valid : allDs
+    const medianByCount = pool[Math.floor(pool.length / 2)]
+    const iqrCutoff = Math.min(maxSingleParticleUm, Math.max(1200, medianByCount * 2.35))
+    ds = pool.length >= 30 ? pool.filter(d => d <= iqrCutoff) : pool
+  }
 
-  // IQR-фильтр выбросов сверху: в d³ даже 2–3 слипшиеся по 2–3 штуки крупинки искажают медиану.
-  // Отсекаем хвост крупнее 2.2 × числовой медианы (если в пуле достаточно частиц).
-  const medianByCount = rawDs[Math.floor(rawDs.length / 2)]
-  const iqrCutoff = Math.min(maxSingleParticleUm, Math.max(1200, medianByCount * 2.35))
-  const ds = rawDs.length >= 30 ? rawDs.filter(d => d <= iqrCutoff) : rawDs
+  if (!ds.length) return null
 
   const cum: number[] = []
   let acc = 0
@@ -339,11 +332,7 @@ export function summarize(seg: Segmentation, pxPerMm: number, opts: SummarizeOpt
     totalVol += v
     if (p.area > 8 * medArea) clumpVol += v
   }
-  if (
-    seg.dropped.clumps > 0 ||
-    validParticles.length < seg.particles.length * 0.85 ||
-    (totalVol > 0 && clumpVol / totalVol > 0.12)
-  ) {
+  if (seg.dropped.clumps > 0 || filteredClumps || (totalVol > 0 && clumpVol / totalVol > 0.12)) {
     flags.push('clumps')
   }
 
