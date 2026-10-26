@@ -1,5 +1,6 @@
 import type { BrewLog, BrewStep, Recipe } from '../types'
 import { GRIND_SIZES } from '../grinders/size'
+import { TASTE_LABEL } from '../brewlog/taste'
 import type { GrindSize } from '../grinders/size'
 import { uid } from '../storage'
 
@@ -51,7 +52,7 @@ export function assessTrialOutcome(source: BrewLog | undefined, trial: BrewLog):
     evidence.push(`Оценка: ${source.rating}/5 → ${trial.rating}/5 (${ratingDelta > 0 ? '+' : ''}${ratingDelta})`)
   }
   if (source.taste && trial.taste) {
-    evidence.push(`Вкус: ${source.taste} → ${trial.taste}`)
+    evidence.push(`Вкус: ${TASTE_LABEL[source.taste]} → ${TASTE_LABEL[trial.taste]}`)
   }
   if (source.durationS > 0 && trial.durationS > 0) {
     const delta = trial.durationS - source.durationS
@@ -397,7 +398,7 @@ export function assessTrialRepeatability(
     log.method === source.method &&
     (source.beanRoastDate ? log.beanRoastDate === source.beanRoastDate : !log.beanRoastDate) &&
     (source.grind?.grinder?.id ? log.grind?.grinder?.id === source.grind.grinder.id : !log.grind?.grinder?.id) &&
-    (log.taste !== undefined || log.rating !== undefined),
+    log.taste !== undefined && typeof log.rating === 'number' && Number.isFinite(log.rating) && log.rating >= 1 && log.rating <= 5,
   )
 
   let positive = 0
