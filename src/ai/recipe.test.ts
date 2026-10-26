@@ -27,6 +27,13 @@ describe('buildAIResult', () => {
     expect(recipe.grind?.size).toBe('medium_fine')
   })
 
+  it('ручные обработка, обжарка и дата имеют приоритет над догадками AI', () => {
+    const existing = { ...bean, process: 'washed', roastLevel: 'medium' as const, roastDate: '2026-10-01' }
+    const { bean: b, recipe } = buildAIResult({ bean: { process: 'natural', roastLevel: 'dark', roastDate: '2026-09-01' } }, { ...ctx, bean: existing })
+    expect([b.process, b.roastLevel, b.roastDate]).toEqual(['washed', 'medium', '2026-10-01'])
+    expect(recipe.tempC).toBe(93)
+  })
+
   it('доза 60 г: шаги подгоняются под воду, а не остаются на 15 г', () => {
     const { recipe } = buildAIResult(OUT, { ...ctx, doseG: 60 })
     expect(recipe.waterG).toBe(960)
