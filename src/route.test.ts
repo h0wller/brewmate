@@ -18,6 +18,7 @@ const ALL: Route[] = [
   { name: 'session', id: 's1' },
   { name: 'journal' },
   { name: 'entry', id: 'l1' },
+  { name: 'bench' },
 ]
 
 describe('route', () => {
@@ -55,5 +56,7 @@ describe('route', () => {
     expect(tabOf({ name: 'session', id: 'x' })).toBe('cup')
     expect(tabOf({ name: 'journal' })).toBe('log')
     expect(tabOf({ name: 'entry', id: 'x' })).toBe('log')
+    expect(tabOf({ name: 'bench' })).toBe('bench')
+    expect(parseRoute('#/bench')).toEqual({ name: 'bench' })
   })
 })
