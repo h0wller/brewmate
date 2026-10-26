@@ -22,7 +22,7 @@ describe('buildAIResult', () => {
     expect(recipe.method).toBe('v60')
     expect(recipe.doseG).toBe(15)
     expect(recipe.waterG).toBe(240)
-    expect(recipe.tempC).toBe(94)
+    expect(recipe.tempC).toBe(95)
     expect(recipe.steps.at(-1)?.pourTo).toBe(240)
     expect(recipe.grind?.size).toBe('medium_fine')
   })
@@ -42,9 +42,20 @@ describe('buildAIResult', () => {
     expect(recipe.steps.at(-1)?.pourTo).toBe(recipe.waterG)
   })
 
-  it('температура ограничена 85–98 °C', () => {
-    expect(buildAIResult({ recipe: { tempC: 120 } }, ctx).recipe.tempC).toBe(98)
-    expect(buildAIResult({ recipe: { tempC: 40 } }, ctx).recipe.tempC).toBe(85)
+  it('AI не перезаписывает локальную температуру и пропорцию произвольными числами', () => {
+    const expected = buildAIResult({ recipe: { tempC: 120, ratio: 14, grindSize: 'coarse' } }, ctx).recipe
+    expect(expected.tempC).toBe(95)
+    expect(expected.waterG).toBe(240)
+    expect(expected.grind?.size).toBe('medium_fine')
+  })
+
+  it('Moccamaster сохраняет машинный цикл и базовые параметры в AI-сценарии', () => {
+    const { recipe } = buildAIResult(OUT, { ...ctx, method: 'moccamaster' })
+    expect(recipe.method).toBe('moccamaster')
+    expect(recipe.tempC).toBe(96)
+    expect(recipe.waterG).toBe(240)
+    expect(recipe.steps).toHaveLength(2)
+    expect(recipe.steps[1].note).toContain('Moccamaster')
   })
 })
 
