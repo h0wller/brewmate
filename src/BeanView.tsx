@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
-import type { BeanProfile, GrinderProfile, Recipe } from './types'
+import type { BeanProfile, BrewLog, GrinderProfile, Recipe } from './types'
 import {
   LEVEL_LABEL, METHODS, WATER_PROFILES, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from './beans/engine'
 import { BREWING_PRINCIPLES, BREW_KNOWLEDGE } from './beans/knowledge'
+import { recipeFromBestHistoricalBrew } from './beans/dialIn'
 import { AIError, loadAIConfig, recognizePackage } from './ai/client'
 import { prepareImage } from './ai/image'
 import { buildAIResult } from './ai/recipe'
@@ -18,9 +19,10 @@ import { clickableProps } from './a11y'
 
 const DOSES = [15, 18, 30, 60]
 
-export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI }: {
+export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI }: {
   bean: BeanProfile
   profile: GrinderProfile
+  history: BrewLog[]
   onOpenGrinder: () => void
   onOpenGrindHelp: () => void
   onOpenAI: () => void
@@ -47,6 +49,9 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
   const ready = method !== null && doseOk
   const rec = ready ? recommend(bean, method, water ?? 'balanced', dose) : null
   const mySetting = rec ? smartSettingFor(profile, rec.size, rec.coarseness) : undefined
+  const historicalRecipe = method !== null && doseOk && dose !== null
+    ? recipeFromBestHistoricalBrew(bean, method, dose, history)
+    : undefined
   const grinderName = profile.grinder
     ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id)
     : null
@@ -267,6 +272,14 @@ export function BeanView({ bean, profile, onChange, onBack, onMakeRecipe, onOpen
           <button className="btn" onClick={() => onMakeRecipe(recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness), dose))}>
             Сделать рецепт → в таймер
           </button>
+          {historicalRecipe && (
+            <div className="tip" style={{ marginTop: 10 }}>
+              <b>Есть удачная чашка из истории</b>
+              <div>Для этого зерна и метода есть запись с оценкой не ниже 4/5 и отмеченным балансом. Можно использовать её как альтернативную стартовую точку.</div>
+              <div className="small">Сохраняются температура и настройка помола из той чашки; доза и вода масштабируются пропорционально. Проверь, что помол по-прежнему подходит текущей партии.</div>
+              <button className="btn secondary" onClick={() => onMakeRecipe(historicalRecipe)}>Использовать исторический рецепт</button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="small">Выбери метод и дозу — покажу помол, температуру и воду.</div>
