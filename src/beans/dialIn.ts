@@ -175,7 +175,11 @@ export function makeTrialRecipe(log: BrewLog): Recipe | undefined {
  * Finds a prior high-rated balanced cup for the same bean and brewing method.
  * Requires a stable bean identifier/name match; never compares unrelated coffees.
  */
-export function findBestComparableBrew(current: BrewLog, history: BrewLog[]): BrewLog | undefined {
+export function findBestComparableBrew(
+  current: BrewLog,
+  history: BrewLog[],
+  context: { grinderId?: string; roastDate?: string } = {},
+): BrewLog | undefined {
   const hasBeanIdentity = Boolean(current.beanId || current.beanName)
   if (!hasBeanIdentity) return undefined
   return history
@@ -184,7 +188,12 @@ export function findBestComparableBrew(current: BrewLog, history: BrewLog[]): Br
       const sameBean = current.beanId
         ? candidate.beanId === current.beanId
         : !candidate.beanId && candidate.beanName === current.beanName
-      return sameBean && candidate.rating !== undefined && candidate.rating >= 4 && candidate.taste === 'balanced'
+      const sameGrinder = !Object.prototype.hasOwnProperty.call(context, 'grinderId') ||
+        (candidate.grind?.grinder?.id ?? undefined) === context.grinderId
+      const sameRoast = !Object.prototype.hasOwnProperty.call(context, 'roastDate') ||
+        candidate.beanRoastDate === context.roastDate
+      return sameBean && sameGrinder && sameRoast &&
+        candidate.rating !== undefined && candidate.rating >= 4 && candidate.taste === 'balanced'
     })
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0) || b.startedAt - a.startedAt)[0]
 }
