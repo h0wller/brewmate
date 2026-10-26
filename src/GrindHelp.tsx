@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
 import type { BrewLog, GrinderProfile } from './types'
 import { NumField } from './NumField'
@@ -124,12 +124,12 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     decimals: grinderScale?.decimals ?? (setting !== null && !Number.isInteger(setting) ? 1 : 0),
   }) : null, [stats, size, taste, flow, curve, grinderId, grinderScale, profile.redClix, setting])
 
-  const repaint = () => {
+  const repaint = useCallback(() => {
     const cv = canvas.current
     if (cv && original.current) cv.getContext('2d')!.putImageData(original.current, 0, 0)
-  }
+  }, [])
 
-  const draw = () => {
+  const draw = useCallback(() => {
     const cv = canvas.current; if (!cv || !cv.width) return
     const ctx = cv.getContext('2d')!
     const lw = Math.max(2, cv.width / 350)
@@ -179,9 +179,9 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
         ctx.stroke()
       }
     }
-  }
+  }, [step, coinCircle, seg])
 
-  useEffect(() => { if (step !== 'setup') { repaint(); draw() } }, [coinCircle, step, seg])
+  useEffect(() => { if (step !== 'setup') { repaint(); draw() } }, [step, repaint, draw])
 
   const onFile = async (f?: File) => {
     if (!f) return
