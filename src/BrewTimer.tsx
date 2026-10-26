@@ -15,6 +15,7 @@ export function BrewTimer({ recipe, onLog }: { recipe: Recipe; onLog?: (d: LogDr
     const curve = getCurve()
     onLog?.({
       recipeId: recipe.id,
+      trial: recipe.trial,
       title: recipe.title,
       method: recipe.method,
       doseG: recipe.doseG,
