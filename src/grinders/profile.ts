@@ -48,7 +48,7 @@ export function smartSettingFor(
   _coarseness?: number,
 ): string | undefined {
   const manual = p.calibration[size]
-  if (manual) return manual
+  if (manual && !manual.trim().startsWith(APPROX)) return manual
   return undefined
 }
 
