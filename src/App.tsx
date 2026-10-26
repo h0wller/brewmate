@@ -191,6 +191,7 @@ export default function App() {
             key={b.id}
             bean={b}
             profile={profile}
+            history={logs}
             onOpenGrinder={() => navigate({ name: 'grinder' })}
             onOpenGrindHelp={() => navigate({ name: 'grind' })}
             onOpenAI={() => navigate({ name: 'ai' })}
