@@ -39,8 +39,9 @@ export const saveProfile = (p: GrinderProfile): void => { safeWrite(localStorage
 export const settingFor = (p: GrinderProfile, size: GrindSize): string | undefined =>
   p.calibration[size]
 
-/* Умный подбор настройки: сначала ручная калибровка пользователя,
-   а если её нет — ориентир «≈ N» по усреднённой шкале кофемолки (с учётом дробного coarseness и Red Clix) */
+/* Безопасный подбор настройки: числовые factory presets в presets.ts не подтверждены
+   источниками и не являются измерениями. Поэтому не выдаём их за рекомендацию рецепта.
+   Они доступны отдельно через «Подставить ориентиры»; в рецепте используем ручную калибровку. */
 export function smartSettingFor(
   p: GrinderProfile,
   size: GrindSize,
@@ -48,11 +49,7 @@ export function smartSettingFor(
 ): string | undefined {
   const manual = p.calibration[size]
   if (manual) return manual
-  const gid = p.grinder?.id
-  const preset = coarseness !== undefined
-    ? presetSettingByCoarseness(gid, coarseness, p.redClix)
-    : presetSettingForSize(gid, size, p.redClix)
-  return preset && `${APPROX} ${preset}`
+  return undefined
 }
 
 /* Помол для рецепта: уровень + настройка пользователя (или авто-пресет кофемолки при переданном coarseness) */
