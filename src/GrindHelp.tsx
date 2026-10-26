@@ -272,7 +272,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     const now = Date.now()
     const checkId = uid()
     onAddCheck({
-      id: checkId, at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste, logId: log?.id,
+      id: checkId, at: now, createdAt: now, updatedAt: now, source: 'photo', grinderId, setting, size, taste, logId: log?.id,
       d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
     })
     if (grinderId) {
