@@ -387,11 +387,14 @@ export function assessTrialRepeatability(
   history: BrewLog[],
   targetTrial?: BrewLog,
 ): RepeatabilityAssessment {
-  const targetSignature = targetTrial?.trial ? trialSignature(targetTrial) : undefined
+  const referenceTrial = targetTrial?.trial
+    ? targetTrial
+    : history.find(log => log.trial?.sourceLogId === source.id)
+  const targetSignature = referenceTrial?.trial ? trialSignature(referenceTrial) : undefined
   const trials = history.filter(log =>
     log.trial?.sourceLogId === source.id &&
     (!targetSignature || trialSignature(log) === targetSignature) &&
-    (!targetTrial?.trial || log.trial?.variable === targetTrial.trial.variable) &&
+    (!referenceTrial?.trial || log.trial?.variable === referenceTrial.trial.variable) &&
     log.method === source.method &&
     log.id !== source.id &&
     (source.beanId ? log.beanId === source.beanId : log.beanName === source.beanName) &&
