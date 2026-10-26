@@ -6,15 +6,15 @@ type PublicProvider = { id: string; model: string; priority: number }
 type ProviderList = { providers?: PublicProvider[]; maxImageChars?: number }
 
 async function prepareImage(blob: Blob, maxImageChars: number): Promise<string> {
-  const targetChars = Math.max(100_000, maxImageChars - 10_000)
+  const targetChars = Math.max(10_000, maxImageChars - 10_000)
   if (blob.size * 4 / 3 < targetChars) return blobToDataUrl(blob)
   const url = URL.createObjectURL(blob)
   try {
     const image = new Image()
-    image.src = url
     await new Promise<void>((resolve, reject) => {
       image.onload = () => resolve()
       image.onerror = () => reject(new Error('Не удалось прочитать фото. Попробуй JPEG, PNG или WebP.'))
+      image.src = url
     })
     let scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight))
     for (let attempt = 0; attempt < 7; attempt++) {
