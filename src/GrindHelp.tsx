@@ -5,6 +5,7 @@ import { NumField } from './NumField'
 import { findGrinder } from './grinders/catalog'
 import { getGrinderScale, parseDialValue } from './grinders/presets'
 import { APPROX, settingFor as profileSettingFor } from './grinders/profile'
+import { settingAfterSizeChange, type SettingSource } from './grind/setting'
 import { tasteForGrind } from './brewlog/taste'
 import { flowSignal } from './grind/flow'
 import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
@@ -70,6 +71,13 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const [setting, setSetting] = useState<number | null>(() =>
     defaultSettingForSize(profile, initialSize, log?.grind?.setting),
   )
+  const settingSource = useRef<SettingSource>((() => {
+    const scale = getGrinderScale(profile.grinder?.id)
+    if (log?.grind?.setting && parseDialValue(log.grind.setting, scale) !== null) return 'log'
+    const manual = profileSettingFor(profile, initialSize)
+    return manual && !manual.trim().startsWith(APPROX) && parseDialValue(manual, scale) !== null
+      ? 'calibration' : 'none'
+  })())
   const [taste, setTaste] = useState<Taste | undefined>(() => tasteForGrind(log?.taste))
   const flow = useMemo(() => (log ? flowSignal(log) : undefined), [log])
   const [coinId, setCoinId] = useState<string>('rub2')
@@ -88,7 +96,6 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const canvas = useRef<HTMLCanvasElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const original = useRef<ImageData | null>(null)
-  const settingTouched = useRef(false)   // пользователь сам вводил настройку: смена уровня её не затирает
 
   const grinderId = profile.grinder?.id
   const grinderScale = getGrinderScale(grinderId)
@@ -101,9 +108,10 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const pickSize = (nextSize: GrindSize) => {
     setSize(nextSize)
     setPhotoProfile(photoProfileFor(profile.grinder?.id, nextSize))
-    if (settingTouched.current) return
-    const nextDefault = defaultSettingForSize(profile, nextSize)
-    if (nextDefault !== null) setSetting(nextDefault)
+    const nextCalibration = defaultSettingForSize(profile, nextSize)
+    const next = settingAfterSizeChange(setting, settingSource.current, nextCalibration)
+    settingSource.current = next.source
+    setSetting(next.setting)
   }
 
   const advice = useMemo(() => stats ? adviseGrind({
@@ -331,7 +339,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
 
           <div className="small">Какая настройка сейчас стоит на кофемолке?</div>
           <div className="row">
-            <NumField value={setting} onValue={v => { settingTouched.current = true; setSetting(v) }} decimal label="Настройка кофемолки" placeholder="напр. 5.5" />
+            <NumField value={setting} onValue={v => { settingSource.current = "user"; setSetting(v) }} decimal label="Настройка кофемолки" placeholder="напр. 5.5" />
             <span className="small" style={{ margin: 0 }}>
               {grinderScale?.unit ?? 'деление / клики'}{setting !== null && log ? ' (из записи журнала)' : ''}
             </span>
