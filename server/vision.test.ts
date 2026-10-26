@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, runVision, validateRequest,
+  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, PROVIDER_REGISTRY, runVision, validProviderBaseUrl, validateRequest,
 } from './vision'
 import type { Deps, Env, Provider } from './vision'
 
@@ -41,6 +41,25 @@ describe('провайдеры и лимиты из окружения', () => {
     expect(ps.map(p => p.id)).toEqual(['groq'])
     expect(ps[0].key).toBe('k')
     expect(ps[0].model).toBe('m1')
+  })
+  it('реестр явно описывает vision-возможности и поддерживает совместимый API-слот', () => {
+    expect(PROVIDER_REGISTRY.every(p => p.supportsVision && p.protocol === 'openai-chat-completions')).toBe(true)
+    const ps = loadProviders({
+      GROQ_API_KEY: 'g',
+      AI_COMPAT_API_KEY: 'c',
+      AI_COMPAT_BASE_URL: 'https://api.example.test/v1/',
+      AI_COMPAT_MODEL: 'vision-model',
+      AI_COMPAT_PROVIDER_ID: 'free-aggregator',
+    })
+    expect(ps.map(p => p.id)).toEqual(['groq', 'free-aggregator'])
+    expect(ps[1]).toMatchObject({ baseUrl: 'https://api.example.test/v1', model: 'vision-model', supportsVision: true, priority: 100 })
+  })
+  it('совместимый API принимает только безопасный HTTPS base URL', () => {
+    expect(validProviderBaseUrl('https://api.example.test/v1')).toBe(true)
+    expect(validProviderBaseUrl('http://api.example.test/v1')).toBe(false)
+    expect(validProviderBaseUrl('https://user:pass@api.example.test/v1')).toBe(false)
+    expect(validProviderBaseUrl('https://api.example.test/v1?key=secret')).toBe(false)
+    expect(loadProviders({ AI_COMPAT_API_KEY: 'x', AI_COMPAT_BASE_URL: 'http://localhost:3000/v1', AI_COMPAT_MODEL: 'm' })).toEqual([])
   })
   it('лимиты: значения по умолчанию и разбор мусора', () => {
     expect(loadLimits({})).toEqual({ perUserPerDay: 10, globalPerDay: 500, maxImageChars: 1_500_000 })
@@ -149,6 +168,25 @@ describe('runVision: перебор провайдеров', () => {
     const { f } = fakeFetch({ 'gem.test': [ok()] })
     const out = await runVision(f, ps, req, newHealth(), T)
     expect(out).toEqual({ ok: true, result: MODEL_JSON, provider: 'gemini' })
+  })
+  it('сохраняет cooldown и last-good в общем хранилище между экземплярами', async () => {
+    const shared = new Map<string, string>()
+    const state = {
+      get: async (key: string) => shared.get(key) ?? null,
+      set: async (key: string, value: string) => { shared.set(key, value) },
+    }
+    const first = fakeFetch({ 'gem.test': [fail(429)], 'groq.test': [ok()] })
+    const h1 = newHealth()
+    const a = await runVision(first.f, ps, req, h1, T, 1000, () => {}, state)
+    expect(a.ok && a.provider).toBe('groq')
+    expect(shared.get('ai:vision:provider-until:gemini')).toBe(String(T + 60_000))
+    expect(shared.get('ai:vision:last-good')).toBe('groq')
+
+    const second = fakeFetch({ 'gem.test': [ok()], 'groq.test': [ok()] })
+    const h2 = newHealth()
+    const b = await runVision(second.f, ps, req, h2, T + 5_000, 1000, () => {}, state)
+    expect(b.ok && b.provider).toBe('groq')
+    expect(second.calls).toEqual(['groq.test'])
   })
   it('429 у первого → берёт второго и первого не трогает в течение минуты', async () => {
     const { f, calls } = fakeFetch({ 'gem.test': [fail(429)], 'groq.test': [ok()] })
