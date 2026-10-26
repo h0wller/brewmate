@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { subscribeStorageError } from '../storageError'
 import type { BrewLog } from '../types'
 import {
-  findDialInProfile, profileFromConfirmedLog, sanitizeDialInProfiles, upsertDialInProfile,
+  findDialInProfile, profileFromConfirmedLog, sanitizeDialInProfiles, upsertDialInProfile, saveDialInProfile,
 } from './dialInProfile'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
@@ -24,6 +25,8 @@ const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   taste: 'balanced',
   ...p,
 })
+
+afterEach(() => vi.unstubAllGlobals())
 
 describe('dial-in profile promotion', () => {
   it('only promotes a confirmed, rated, balanced trial with bean and roast provenance', () => {
@@ -63,9 +66,23 @@ describe('dial-in profile promotion', () => {
     const result = upsertDialInProfile([first], anotherBean)
     const all = upsertDialInProfile(result, anotherRoast)
     expect(all).toHaveLength(3)
-    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', 'bean-1', '2026-10-01')?.sourceLogId).toBe(first.sourceLogId)
-    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', 'bean-2', '2026-10-01')?.sourceLogId).toBe('trial-kenya')
-    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', 'bean-1', '2026-10-05')?.sourceLogId).toBe('trial-roast-2')
+    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', { matchBean: true, beanId: 'bean-1', matchRoastDate: true, roastDate: '2026-10-01' })?.sourceLogId).toBe(first.sourceLogId)
+    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', { matchBean: true, beanId: 'bean-2', matchRoastDate: true, roastDate: '2026-10-01' })?.sourceLogId).toBe('trial-kenya')
+    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', { matchBean: true, beanId: 'bean-1', matchRoastDate: true, roastDate: '2026-10-05' })?.sourceLogId).toBe('trial-roast-2')
+  })
+
+
+  it('notifies storage-error subscribers when profile persistence fails', () => {
+    const candidate = profileFromConfirmedLog(log(), { status: 'confirmed', positive: 3, trials: 3 }, 100)!
+    vi.stubGlobal('localStorage', {
+      getItem: () => '[]',
+      setItem: () => { throw new Error('QuotaExceededError') },
+    })
+    const errors: { key: string; message: string }[] = []
+    const unsubscribe = subscribeStorageError(error => errors.push(error))
+    saveDialInProfile(candidate)
+    unsubscribe()
+    expect(errors).toEqual([{ key: 'brewmate.dial-in-profiles.v1', message: 'QuotaExceededError' }])
   })
 
   it('sanitizes malformed imported profile data', () => {
