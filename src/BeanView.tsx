@@ -4,6 +4,7 @@ import {
   LEVEL_LABEL, METHODS, WATER_PROFILES, analyzeBeanPhoto, daysSince, recommend, recipeFromBean,
 } from './beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from './beans/engine'
+import type { GrindSize } from './grinders/size'
 import { BREWING_PRINCIPLES, BREW_KNOWLEDGE } from './beans/knowledge'
 import { recipeFromBestHistoricalBrew, summarizeBeanHistory } from './beans/dialIn'
 import { AIError, loadAIConfig, recognizePackage } from './ai/client'
@@ -294,7 +295,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
             {savedDialIn.positiveTrials}/{savedDialIn.totalTrials} положительных проб · зерно: {savedDialIn.beanName ?? savedDialIn.beanId ?? 'не указано'} · обжарка: {savedDialIn.roastDate ?? 'не указана'}.
           </div>
           <div>{savedDialIn.doseG} г / {savedDialIn.waterG} г · {savedDialIn.tempC} °C
-            {savedDialIn.grindSize ? ` · ${SIZE_LABEL[savedDialIn.grindSize as keyof typeof SIZE_LABEL] ?? savedDialIn.grindSize}` : ''}
+            {savedDialIn.grindSize ? ` · ${SIZE_LABEL[savedDialIn.grindSize] ?? savedDialIn.grindSize}` : ''}
             {savedDialIn.grinderSetting ? ` · ${savedDialIn.grinderSetting}` : ''}
           </div>
           {applicableDialIn ? (
@@ -311,7 +312,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
                 tempC: applicableDialIn.tempC,
                 grind: profile.grinder ? {
                   grinder: profile.grinder,
-                  size: applicableDialIn.grindSize as Recipe['grind'] extends { size?: infer S } ? S : never,
+                  size: applicableDialIn.grindSize as GrindSize | undefined,
                   setting: applicableDialIn.grinderSetting,
                 } : undefined,
                 steps: applicableDialIn.steps.map(step => ({ ...step, pourTo: Math.round(step.pourTo * scale) })),
