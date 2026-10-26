@@ -185,12 +185,15 @@ export function recipeFromBestHistoricalBrew(
   method: string,
   doseG: number,
   history: BrewLog[],
+  context: { grinderId?: string; roastDate?: string } = {},
 ): Recipe | undefined {
   const name = bean.name.trim().toLocaleLowerCase()
   if (!name || !Number.isFinite(doseG) || doseG <= 0) return undefined
   const reference = history
     .filter(log =>
       log.method === method &&
+      (context.grinderId === undefined || log.grind?.grinder?.id === context.grinderId) &&
+      (context.roastDate === undefined || log.beanRoastDate === context.roastDate) &&
       log.rating !== undefined && log.rating >= 4 &&
       log.taste === 'balanced' &&
       (log.beanId === bean.id || (!log.beanId && log.beanName?.trim().toLocaleLowerCase() === name)),
@@ -206,6 +209,8 @@ export function recipeFromBestHistoricalBrew(
     title: `${bean.name} · проверенный ориентир · ${reference.rating}/5`,
     reference: { sourceLogId: reference.id, sourceRating: reference.rating! },
     method: reference.method,
+    beanId: bean.id,
+    beanRoastDate: context.roastDate,
     doseG,
     waterG,
     tempC: reference.tempC,
