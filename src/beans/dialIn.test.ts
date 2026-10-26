@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
+import { GRIND_SIZES } from '../grinders/size'
 import { assessTrialOutcome, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
@@ -61,6 +62,13 @@ describe('makeTrialRecipe', () => {
 
   it('does not create a trial for balanced coffee', () => {
     expect(makeTrialRecipe(log({ taste: 'balanced' }))).toBeUndefined()
+  })
+
+  it('does not invent a finer target beyond the grind-size scale', () => {
+    const source = log({ taste: 'sour', grind: { grinder: { id: 'test' }, setting: '1', size: GRIND_SIZES[0] } })
+    const trial = makeTrialRecipe(source)!
+    expect(trial.grind?.size).toBeUndefined()
+    expect(trial.grind?.setting).toBeUndefined()
   })
 })
 
