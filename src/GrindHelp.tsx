@@ -10,12 +10,12 @@ import { tasteForGrind } from './brewlog/taste'
 import { flowSignal } from './grind/flow'
 import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
 import type { GrindSize } from './grinders/size'
-import { COINS, detectCoinCircle, particleAreaLimits, segment, summarize } from './grind/analyze'
+import { COINS, computeSieveCalibrationFactor, detectCoinCircle, particleAreaLimits, segment, summarize } from './grind/analyze'
 import type { Circle, GrindStats, Segmentation } from './grind/analyze'
 import { adviseGrind, VERDICT_TEXT } from './grind/advise'
 import type { Taste } from './grind/advise'
 import { fitCurve } from './grind/curve'
-import { curvePoints, photoProfileFor, savePhotoProfile } from './grind/store'
+import { activeCalibrationFactor, curvePoints, photoProfileFor, savePhotoProfile } from './grind/store'
 import type { GrindCheck, PhotoGrindProfile } from './grind/store'
 import { uid } from './storage'
 import { AIError, loadAIConfig } from './ai/client'
@@ -23,9 +23,11 @@ import { askGrindOpinion, ISSUE_TEXT, opinionAgrees } from './ai/grind'
 import type { GrindOpinion } from './ai/grind'
 import { imageDataToJpeg } from './ai/image'
 import { SIEVE_REFERENCES } from './grind/target'
+import type { SieveBracket } from './grind/target'
 
 const MAX_SIDE = 1600
 type Step = 'setup' | 'mark' | 'result'
+type AnalysisMode = 'photo' | 'sieve'
 
 /* Подставляем только то, что пользователь сам ввёл: настройку из записи журнала или свою калибровку.
    Заводские ориентиры («≈», таблица не подтверждена источниками) как «текущую настройку» не подставляем. */
@@ -68,6 +70,10 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
 }) {
   const initialSize: GrindSize = log?.grind?.size ?? 'medium'
   const [step, setStep] = useState<Step>('setup')
+  const [mode, setMode] = useState<AnalysisMode>('photo')
+  const [sieveBracket, setSieveBracket] = useState<SieveBracket>('600-900')
+  const [rawStats, setRawStats] = useState<GrindStats | null>(null)
+  const [calibrationFactor, setCalibrationFactor] = useState<number | null>(null)
   const [size, setSize] = useState<GrindSize>(initialSize)
   const [setting, setSetting] = useState<number | null>(() =>
     defaultSettingForSize(profile, initialSize, log?.grind?.setting),
@@ -106,6 +112,8 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id) : undefined
 
   const curve = useMemo(() => fitCurve(curvePoints(checks, grinderId)), [checks, grinderId])
+  const activeFactor = activeCalibrationFactor(checks, grinderId)
+  const hasSieveCalibration = checks.some(c => c.source === 'sieve' && typeof c.calibrationFactor === 'number' && c.calibrationFactor >= 0.55 && c.calibrationFactor <= 1.45)
   const mine = useMemo(() => checks.filter(c => (c.grinderId ?? '') === (grinderId ?? '')), [checks, grinderId])
 
   const pickSize = (nextSize: GrindSize) => {
@@ -194,7 +202,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
       original.current = img
       // Автоматически находим монету на фото
       setCoinCircle(detectCoinCircle(img))
-      setStats(null); setSeg(null); setSaved(false); setOpinion(null); setAiErr('')
+      setStats(null); setRawStats(null); setCalibrationFactor(null); setSeg(null); setSaved(false); setSieveSaved(false); setOpinion(null); setAiErr('')
       setStep('mark')
     } catch {
       setErr('Не удалось открыть фото. Попробуй снять ещё раз.')
@@ -257,13 +265,27 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
         minArea,
         maxArea,
       })
-      const st = summarize(s, k)
+      const raw = summarize(s, k, { calibrationFactor: 1 })
       setBusy(false)
-      if (!st) {
+      if (!raw) {
         setErr('Не нашёл отдельных крупинок. Рассыпь щепотку помола свободнее на белом листе.')
         return
       }
-      setSeg(s); setStats(st); setPxPerMm(k); setStep('result')
+      const factor = mode === 'sieve'
+        ? computeSieveCalibrationFactor(raw.d50, sieveBracket)
+        : activeFactor
+      if (factor === null) {
+        setErr('Не удалось рассчитать поправку по этому фото. Проверь снимок и повтори измерение.')
+        return
+      }
+      const st = mode === 'sieve' ? summarize(s, k, { calibrationFactor: factor }) : summarize(s, k, { calibrationFactor: activeFactor })
+      if (!st) {
+        setErr('Не удалось рассчитать откалиброванный размер частиц. Попробуй переснять.')
+        return
+      }
+      setRawStats(mode === 'sieve' ? raw : null)
+      setCalibrationFactor(mode === 'sieve' ? factor : activeFactor)
+      setSeg(s); setStats(st); setPxPerMm(k); setSieveSaved(false); setStep('result')
     }, 30)
   }
 
@@ -283,6 +305,21 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     setSaved(true)
   }
 
+  const saveSieveReference = () => {
+    if (mode !== 'sieve' || !rawStats || !stats || calibrationFactor === null) return
+    const reference = SIEVE_REFERENCES[sieveBracket]
+    const now = Date.now()
+    const checkId = uid()
+    onAddCheck({
+      id: checkId, at: now, createdAt: now, updatedAt: now, source: 'sieve',
+      ...(grinderId ? { grinderId } : {}),
+      ...(setting !== null ? { setting } : {}),
+      size, sieveBracket, rawD50: Math.round(rawStats.d50), calibrationFactor,
+      d10: Math.round(stats.d10), d50: reference.d50Um, d90: Math.round(stats.d90), n: rawStats.n,
+    })
+    setSieveSaved(true)
+  }
+
   const askAI = async () => {
     const img = original.current
     if (!img || !stats || !advice || asking) return
@@ -299,7 +336,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     setAsking(false)
   }
 
-  const retake = () => { setStep('setup'); setStats(null); setSeg(null); setSaved(false); setCoinCircle(null); setErr(''); setOpinion(null); setAiErr('') }
+  const retake = () => { setStep('setup'); setStats(null); setRawStats(null); setCalibrationFactor(null); setSeg(null); setSaved(false); setSieveSaved(false); setCoinCircle(null); setErr(''); setOpinion(null); setAiErr('') }
 
   return (
     <div>
@@ -309,8 +346,14 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
 
       {step === 'setup' && (
         <>
+          <div className="chips" role="group" aria-label="Режим анализа">
+            <button type="button" className={'chip' + (mode === 'photo' ? ' on' : '')} aria-pressed={mode === 'photo'} onClick={() => { setMode('photo'); setErr('') }}>📷 Обычная проверка помола</button>
+            <button type="button" className={'chip' + (mode === 'sieve' ? ' on' : '')} aria-pressed={mode === 'sieve'} onClick={() => { setMode('sieve'); setErr('') }}>🔬 Калибровка по ситам (600 / 900 / 1400 мкм)</button>
+          </div>
           <div className="small">
-            Приложение измеряет частицы на фото и скажет, крупнее или мельче. Размер считается только по снимку; настройка кофемолки нужна, чтобы назвать новое число.
+            {mode === 'sieve'
+              ? 'Выбери фракцию, которую реально отделил ситами, затем сфотографируй её на белой бумаге рядом с монетой. Не используй смесь фракций.'
+              : 'Приложение измеряет частицы на фото и скажет, крупнее или мельче. Размер считается по снимку; настройка кофемолки нужна, чтобы привязать замер к её шкале.'}
           </div>
 
           <div className="card" onClick={onOpenGrinder}>
@@ -323,12 +366,27 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
             <span style={{ color: '#4b8ef1', fontSize: 14 }}>изменить →</span>
           </div>
 
-          <div className="small">Для какого помола проверяем?</div>
-          <div className="chips">
+          {mode === 'photo' && <div className="small">Для какого помола проверяем?</div>}
+          {mode === 'photo' && <div className="chips">
             {GRIND_SIZES.map(s => (
               <button key={s} className={'chip' + (size === s ? ' on' : '')} onClick={() => pickSize(s)}>{SIZE_LABEL[s]}</button>
             ))}
-          </div>
+          </div>}
+          {mode === 'sieve' && <>
+            <div className="small">Какую просеянную фракцию высыпал на бумагу?</div>
+            <div className="chips">
+              {([
+                ['under-600', '< 600 мкм'],
+                ['600-900', '600–900 мкм'],
+                ['900-1400', '900–1400 мкм'],
+                ['over-1400', '> 1400 мкм'],
+              ] as const).map(([bracket, label]) => (
+                <button key={bracket} type="button" className={'chip' + (sieveBracket === bracket ? ' on' : '')}
+                  aria-pressed={sieveBracket === bracket} onClick={() => { setSieveBracket(bracket); setSieveSaved(false) }}>{label}</button>
+              ))}
+            </div>
+            <div className="small">{SIEVE_REFERENCES[sieveBracket].label}. Эталонный D50: {SIEVE_REFERENCES[sieveBracket].d50Um} мкм.</div>
+          </>}
 
           {photoProfile && (
             <div className="card" style={{ display: 'block', cursor: 'default' }}>
@@ -347,45 +405,12 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
               {grinderScale?.unit ?? 'деление / клики'}{setting !== null && log ? ' (из записи журнала)' : ''}
             </span>
           </div>
-          <details style={{ marginTop: 12 }}>
-            <summary style={{ cursor: 'pointer', padding: '10px 0' }}>Лабораторная калибровка по ситам (600 / 900 / 1400 мкм)</summary>
-            <div className="card" style={{ display: 'block', cursor: 'default', marginTop: 4 }}>
-              <div className="small" style={{ marginTop: 0 }}>
-                Для зерна, физически просеянного через указанные сита. Укажи текущую настройку выше и сохрани фракцию. Эти эталонные размеры не вычисляются по фото.
-              </div>
-              <div className="chips">
-                <button type="button" className="chip" disabled={!grinderId || setting === null} onClick={() => {
-                  const now = Date.now()
-                  const ref = SIEVE_REFERENCES['600-900']
-                  onAddCheck({
-                    id: uid(), at: now, createdAt: now, updatedAt: now, source: 'sieve',
-                    grinderId, setting: setting!, size,
-                    d10: ref.minUm, d50: ref.d50Um, d90: ref.maxUm, n: 0,
-                  })
-                  setSieveSaved(true)
-                }}>600–900 мкм · D50 {SIEVE_REFERENCES['600-900'].d50Um} мкм</button>
-                <button type="button" className="chip" disabled={!grinderId || setting === null} onClick={() => {
-                  const now = Date.now()
-                  const ref = SIEVE_REFERENCES['900-1400']
-                  onAddCheck({
-                    id: uid(), at: now, createdAt: now, updatedAt: now, source: 'sieve',
-                    grinderId, setting: setting!, size,
-                    d10: ref.minUm, d50: ref.d50Um, d90: ref.maxUm, n: 0,
-                  })
-                  setSieveSaved(true)
-                }}>900–1400 мкм · D50 {SIEVE_REFERENCES['900-1400'].d50Um} мкм</button>
-              </div>
-              {sieveSaved && <div className="small" role="status">Эталонная ситовая фракция сохранена в замеры кривой.</div>}
-              {(!grinderId || setting === null) && <div className="small">Выбери кофемолку и укажи её текущую настройку, чтобы сохранить эталон.</div>}
-            </div>
-          </details>
-
-          <div className="small">Как на вкус прошлая заварка? (необязательно)</div>
-          <div className="chips">
+          {mode === 'photo' && <div className="small">Как на вкус прошлая заварка? (необязательно)</div>}
+          {mode === 'photo' && <div className="chips">
             {([['sour', 'Кисло'], ['bitter', 'Горько'], ['ok', 'Нормально']] as const).map(([t, l]) => (
               <button key={t} className={'chip' + (taste === t ? ' on' : '')} onClick={() => setTaste(taste === t ? undefined : t)}>{l}</button>
             ))}
-          </div>
+          </div>}
 
           <div className="card" style={{ marginTop: 16 }}>
             <b>Как снять для максимальной точности</b>
@@ -398,7 +423,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
           <input ref={fileRef} type="file" accept="image/*" hidden
             onChange={e => { onFile(e.target.files?.[0]); e.target.value = '' }} />
           <button className="btn" style={{ marginTop: 12 }} disabled={busy} onClick={() => fileRef.current?.click()}>
-            📷 Сфоткать помол
+            {mode === 'sieve' ? '📷 Сфоткать просеянную фракцию' : '📷 Сфоткать помол'}
           </button>
           {err && <div className="small" style={{ color: '#ff6961' }}>{err}</div>}
           {mine.length > 0 && (
