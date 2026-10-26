@@ -67,3 +67,42 @@ export function curvePoints(list: GrindCheck[], grinderId?: string): CurvePoint[
   }
   return [...bySetting.values()].map(c => ({ setting: c.setting, d50: c.d50 }))
 }
+
+/* Фото-рекомендация хранится отдельно от ручной калибровки GrinderProfile. */
+export interface PhotoGrindProfile {
+  grinderId: string
+  size: GrindSize
+  setting: number
+  d50: number
+  updatedAt: number
+  checkId: string
+}
+
+export const PHOTO_GRIND_PROFILES_KEY = 'brewmate.photo-grind-profiles.v1'
+
+export function sanitizePhotoProfiles(raw: unknown): PhotoGrindProfile[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((v): v is PhotoGrindProfile => {
+    if (!v || typeof v !== 'object') return false
+    const p = v as Record<string, unknown>
+    return typeof p.grinderId === 'string' && p.grinderId.length > 0
+      && GRIND_SIZES.includes(p.size as GrindSize)
+      && num(p.setting) && num(p.d50) && p.d50 > 0
+      && num(p.updatedAt) && typeof p.checkId === 'string'
+  }).slice(-100)
+}
+
+export function loadPhotoProfiles(): PhotoGrindProfile[] {
+  try { return sanitizePhotoProfiles(JSON.parse(localStorage.getItem(PHOTO_GRIND_PROFILES_KEY) ?? '[]')) }
+  catch { return [] }
+}
+
+export function savePhotoProfile(profile: PhotoGrindProfile): void {
+  const list = loadPhotoProfiles().filter(p => !(p.grinderId === profile.grinderId && p.size === profile.size))
+  safeWrite(localStorage, PHOTO_GRIND_PROFILES_KEY, [...list, profile].slice(-100))
+}
+
+export function photoProfileFor(grinderId: string | undefined, size: GrindSize): PhotoGrindProfile | undefined {
+  if (!grinderId) return undefined
+  return loadPhotoProfiles().find(p => p.grinderId === grinderId && p.size === size)
+}
