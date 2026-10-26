@@ -31,7 +31,7 @@ describe('резервная копия', () => {
     const b = JSON.parse(JSON.stringify(makeBackup(emptyData(), mine, undefined, [dialInProfile()])))
     expect(sanitizeData(b).grindChecks).toEqual([])
     expect(sanitizeData(b).photoProfiles).toEqual([])
-    expect(sanitizeData(b).dialInProfiles).toEqual([])
+    expect(sanitizeData(b).dialInProfiles).toEqual([dialInProfile()])
     expect(profileToRestore(b, emptyProfile())).toEqual(mine)
     expect(dialInProfilesToRestore(b, []).map(p => p.id)).toEqual([dialInProfile().id])
   })
