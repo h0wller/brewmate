@@ -100,7 +100,7 @@ export function loadLimits(env: Env): Limits {
 /* ---------- проверка запроса ---------- */
 
 export type VisionRequest =
-  | { task: 'package'; methodLabel: string; image: string; water?: PromptWater; doseG?: number; bean?: PromptBeanContext }
+  | { task: 'package'; methodLabel: string; image: string; water?: PromptWater; doseG?: number; bean?: PromptBeanContext; providerId?: string }
   | { task: 'grind'; image: string; grind: GrindFacts }
 
 const promptFor = (req: VisionRequest): string =>
@@ -146,6 +146,9 @@ export function validateRequest(
   if (typeof b.methodLabel !== 'string' || !LABEL_RE.test(b.methodLabel)) {
     return { ok: false, message: 'некорректный метод заваривания' }
   }
+  if (b.providerId !== undefined && (typeof b.providerId !== 'string' || !/^[a-zA-Z0-9_-]{1,32}$/.test(b.providerId))) {
+    return { ok: false, message: 'некорректный идентификатор провайдера' }
+  }
   if (b.water !== undefined && !isPromptWater(b.water)) return { ok: false, message: 'некорректная вода' }
   if (b.doseG !== undefined && !(typeof b.doseG === 'number' && b.doseG >= 3 && b.doseG <= 500)) {
     return { ok: false, message: 'некорректная доза' }
@@ -167,6 +170,7 @@ export function validateRequest(
       ...(b.water !== undefined ? { water: b.water } : {}),
       ...(b.doseG !== undefined ? { doseG: b.doseG } : {}),
       ...(bean ? { bean } : {}),
+      ...(b.providerId !== undefined && typeof b.providerId === 'string' && /^[a-zA-Z0-9_-]{1,32}$/.test(b.providerId) ? { providerId: b.providerId } : {}),
     },
   }
 }
@@ -481,7 +485,7 @@ export function clientIp(req: Request): string {
 }
 
 export async function handle(req: Request, deps: Deps): Promise<Response> {
-  if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' }, { Allow: 'POST' })
+  if (req.method !== 'GET' && req.method !== 'POST') return json(405, { error: 'method_not_allowed' }, { Allow: 'GET, POST' })
 
   /* только со страниц самого приложения: чужие сайты не должны гонять наш бесплатный лимит */
   const origin = req.headers.get('origin')
@@ -489,6 +493,11 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     let host = ''
     try { host = new URL(origin).host } catch { /* пустой host ниже даст отказ */ }
     if (host !== new URL(req.url).host) return json(403, { error: 'forbidden_origin' })
+  }
+
+  const providers = loadProviders(deps.env)
+  if (req.method === 'GET') {
+    return json(200, { providers: providers.map(p => ({ id: p.id, model: p.model, priority: p.priority ?? 100 })) })
   }
 
   const limits = loadLimits(deps.env)
@@ -500,8 +509,11 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   const v = validateRequest(body, limits.maxImageChars)
   if (!v.ok) return json(v.message.includes('большая') ? 413 : 400, { error: 'bad_request', message: v.message })
 
-  const providers = loadProviders(deps.env)
   if (!providers.length) return json(503, { error: 'not_configured' })
+  const selectedProviders = v.value.task === 'package' && v.value.providerId
+    ? providers.filter(p => p.id === v.value.providerId)
+    : providers
+  if (!selectedProviders.length) return json(400, { error: 'provider_unavailable', providerId: v.value.task === 'package' ? v.value.providerId : undefined })
 
   const now = deps.now()
   let lim: LimitResult
@@ -514,9 +526,11 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   }
   if (!lim.ok) return json(429, { error: 'limit', scope: lim.scope, resetAt: lim.resetAt })
 
-  const out = await runVision(deps.fetch, providers, v.value, deps.health, now, 25_000, deps.log, deps.providerState)
+  const out = await runVision(deps.fetch, selectedProviders, v.value, deps.health, now, 25_000, deps.log, deps.providerState)
   if (!out.ok) return json(503, { error: 'busy', retryAfterS: out.retryAfterS }, { 'Retry-After': String(out.retryAfterS) })
-  return json(200, { result: out.result })
+  return json(200, v.value.task === 'package' && v.value.providerId
+    ? { result: out.result, provider: out.provider }
+    : { result: out.result })
 }
 
 const fallbackStore = memoryStore()
