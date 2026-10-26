@@ -1,7 +1,6 @@
 import type { BeanProfile, BrewStep, GrinderProfile, Recipe } from '../types'
 import { METHODS, recommend, recipeFromBean } from '../beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from '../beans/engine'
-import { isGrindSize } from '../grinders/size'
 import { grindFor } from '../grinders/profile'
 import { uid } from '../storage'
 
