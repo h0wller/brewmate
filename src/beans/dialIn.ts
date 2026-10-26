@@ -192,8 +192,8 @@ export function recipeFromBestHistoricalBrew(
   const reference = history
     .filter(log =>
       log.method === method &&
-      (context.grinderId === undefined || log.grind?.grinder?.id === context.grinderId) &&
-      (context.roastDate === undefined || log.beanRoastDate === context.roastDate) &&
+      (!Object.prototype.hasOwnProperty.call(context, 'grinderId') || (log.grind?.grinder?.id ?? undefined) === context.grinderId) &&
+      (!Object.prototype.hasOwnProperty.call(context, 'roastDate') || log.beanRoastDate === context.roastDate) &&
       log.rating !== undefined && log.rating >= 4 &&
       log.taste === 'balanced' &&
       (log.beanId === bean.id || (!log.beanId && log.beanName?.trim().toLocaleLowerCase() === name)),
