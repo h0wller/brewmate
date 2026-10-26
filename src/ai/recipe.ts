@@ -1,10 +1,9 @@
 import type { BeanProfile, BrewStep, GrinderProfile, Recipe } from '../types'
-import { METHODS, recommend } from '../beans/engine'
+import { METHODS, recommend, recipeFromBean } from '../beans/engine'
 import type { MethodKey, RoastLevel, WaterKey } from '../beans/engine'
-import { GRIND_SIZES, isGrindSize } from '../grinders/size'
+import { isGrindSize } from '../grinders/size'
 import { grindFor } from '../grinders/profile'
 import { uid } from '../storage'
-import { fitStepsToWater } from './fit'
 
 /* Шаги из ответа модели: мусор отбрасываем, пустое заменяем двумя простыми шагами */
 export const sanitizeSteps = (raw: unknown): BrewStep[] => {
@@ -37,25 +36,18 @@ export function buildAIResult(
   const bean = pickBean(out?.bean, ctx.bean)
   const r = out?.recipe ?? {}
   const rec = recommend(bean, method, water, doseG)
-  const size = isGrindSize(r.grindSize) ? r.grindSize : rec.size
-  /* клики считаем по уровню модели; сдвиг движка относится к его уровню, поэтому к чужому уровню не добавляем */
-  const coarseness = isGrindSize(r.grindSize) && r.grindSize !== rec.size
-    ? GRIND_SIZES.indexOf(r.grindSize)
-    : rec.coarseness
-  const dose = +r.doseG > 0 ? +r.doseG : doseG
-  const ratio = +r.ratio > 0 ? +r.ratio : rec.ratio
-  const waterG = Math.round(dose * ratio)
+  /* AI распознаёт пачку, но расчёт рецепта остаётся у локального движка:
+     метод/устройство, обжарка, дата, обработка, вода и доза дают одинаковый результат
+     в AI- и обычном сценариях. Не доверяем модели произвольные ratio/temp/grindSize. */
+  const recipe = recipeFromBean(bean, method, rec, grindFor(profile, rec.size, rec.coarseness), doseG)
   return {
     bean,
     recipe: {
+      ...recipe,
       id: uid(),
-      title: r.title || `${bean.name || 'Зерно'} · AI · ${METHODS[method].label}`,
-      method,
-      doseG: dose,
-      waterG,
-      tempC: Math.max(85, Math.min(98, +r.tempC || rec.temp)),
-      grind: grindFor(profile, size, coarseness),
-      steps: fitStepsToWater(sanitizeSteps(r.steps), waterG),
+      title: typeof r.title === 'string' && r.title.trim()
+        ? r.title
+        : `${bean.name || 'Зерно'} · AI · ${METHODS[method].label}`,
       createdAt: Date.now(),
     },
   }
