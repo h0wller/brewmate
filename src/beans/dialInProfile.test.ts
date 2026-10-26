@@ -56,6 +56,18 @@ describe('dial-in profile promotion', () => {
     expect(findDialInProfile(result, 'other-grinder', 'moccamaster')).toBeUndefined()
   })
 
+  it('preserves separate profiles for different beans and roast dates on one setup', () => {
+    const first = profileFromConfirmedLog(log(), { status: 'confirmed', positive: 3, trials: 3 }, 100)!
+    const anotherBean = { ...first, id: 'bean-2', beanId: 'bean-2', beanName: 'Kenya', sourceLogId: 'trial-kenya' }
+    const anotherRoast = { ...first, id: 'roast-2', roastDate: '2026-10-05', sourceLogId: 'trial-roast-2' }
+    const result = upsertDialInProfile([first], anotherBean)
+    const all = upsertDialInProfile(result, anotherRoast)
+    expect(all).toHaveLength(3)
+    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', 'bean-1', '2026-10-01')?.sourceLogId).toBe(first.sourceLogId)
+    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', 'bean-2', '2026-10-01')?.sourceLogId).toBe('trial-kenya')
+    expect(findDialInProfile(all, 'comandante-c40', 'moccamaster', 'bean-1', '2026-10-05')?.sourceLogId).toBe('trial-roast-2')
+  })
+
   it('sanitizes malformed imported profile data', () => {
     const valid = profileFromConfirmedLog(log(), { status: 'confirmed', positive: 3, trials: 3 }, 100)!
     expect(sanitizeDialInProfiles([valid, null, { ...valid, doseG: -1 }, { ...valid, grinderId: '' }])).toEqual([valid])
