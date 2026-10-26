@@ -204,6 +204,7 @@ export function recipeFromBestHistoricalBrew(
   return {
     id: uid(),
     title: `${bean.name} · проверенный ориентир · ${reference.rating}/5`,
+    reference: { sourceLogId: reference.id, sourceRating: reference.rating! },
     method: reference.method,
     doseG,
     waterG,
