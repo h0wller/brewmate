@@ -33,12 +33,12 @@ describe('buildAIResult', () => {
     expect(recipe.steps.at(-1)?.pourTo).toBe(960)
   })
 
-  it('мусор в ответе не ломает рецепт: берём расчёт движка и простые шаги', () => {
+  it('мусор в ответе не ломает рецепт: берём локальный профиль метода', () => {
     const { recipe } = buildAIResult({ bean: 5, recipe: { grindSize: 'огромный', tempC: 'горячая', steps: 'нет' } }, ctx)
     expect(recipe.waterG).toBeGreaterThan(0)
     expect(recipe.tempC).toBeGreaterThanOrEqual(85)
     expect(recipe.tempC).toBeLessThanOrEqual(98)
-    expect(recipe.steps.length).toBe(2)
+    expect(recipe.steps.length).toBe(3)
     expect(recipe.steps.at(-1)?.pourTo).toBe(recipe.waterG)
   })
 
