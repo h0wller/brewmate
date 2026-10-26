@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrewLog } from '../types'
 import { GRIND_SIZES } from '../grinders/size'
-import { assessTrialOutcome, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew } from './dialIn'
+import { assessTrialOutcome, assessTrialRepeatability, diagnoseNextCup, findBestComparableBrew, makeTrialRecipe, recipeFromBestHistoricalBrew } from './dialIn'
 
 const log = (p: Partial<BrewLog> = {}): BrewLog => ({
   id: 'log-1',
@@ -167,5 +167,64 @@ describe('recipeFromBestHistoricalBrew', () => {
     const reference = log({ beanId: 'bean-1', rating: 5, taste: 'balanced' })
     expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: ' ' }, 'moccamaster', 20, [reference])).toBeUndefined()
     expect(recipeFromBestHistoricalBrew({ id: 'bean-1', name: 'Эфиопия' }, 'moccamaster', 0, [reference])).toBeUndefined()
+  })
+})
+
+
+describe('assessTrialRepeatability', () => {
+  const source = log({ id: 'source', beanId: 'bean-1', beanName: 'Ethiopia', rating: 3, taste: 'sour' })
+  const trial = (id: string, rating: number, taste: BrewLog['taste'], sourceLogId = source.id): BrewLog => log({
+    id,
+    beanId: 'bean-1',
+    beanName: 'Ethiopia',
+    trial: { sourceLogId, variable: 'grind', baselineTaste: 'sour' },
+    rating,
+    taste,
+  })
+
+  it('requires at least three sensory-rated trials before confirming repeatability', () => {
+    const result = assessTrialRepeatability(source, [
+      trial('t1', 4, 'balanced'),
+      trial('t2', 4, 'balanced'),
+    ])
+    expect(result.status).toBe('insufficient')
+    expect(result.trials).toBe(2)
+  })
+
+  it('confirms repeated positive sensory results without recorded deterioration', () => {
+    const result = assessTrialRepeatability(source, [
+      trial('t1', 4, 'balanced'),
+      trial('t2', 4, 'balanced'),
+      trial('t3', 5, 'balanced'),
+    ])
+    expect(result.status).toBe('confirmed')
+    expect(result.positive).toBe(3)
+    expect(result.summary).toContain('не универсальность')
+  })
+
+  it('keeps a mostly positive series provisional if any trial is worse', () => {
+    const result = assessTrialRepeatability(source, [
+      trial('t1', 4, 'balanced'),
+      trial('t2', 4, 'balanced'),
+      trial('t3', 2, 'sour'),
+    ])
+    expect(result.status).toBe('promising')
+    expect(result.worse).toBe(1)
+  })
+
+  it('ignores trials from another source, bean, or brewing method', () => {
+    const wrongSource = trial('wrong-source', 5, 'balanced', 'different-source')
+    const wrongBean = { ...trial('wrong-bean', 5, 'balanced'), beanId: 'bean-2' }
+    const wrongMethod = { ...trial('wrong-method', 5, 'balanced'), method: 'v60' }
+    const result = assessTrialRepeatability(source, [wrongSource, wrongBean, wrongMethod])
+    expect(result.status).toBe('insufficient')
+    expect(result.trials).toBe(0)
+  })
+
+  it('does not count records without sensory notes or ratings', () => {
+    const unscored = trial('unscored', undefined as unknown as number, undefined)
+    unscored.rating = undefined
+    const result = assessTrialRepeatability(source, [unscored])
+    expect(result.trials).toBe(0)
   })
 })
