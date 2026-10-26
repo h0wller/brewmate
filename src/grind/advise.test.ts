@@ -132,3 +132,39 @@ describe('время заваривания как подсказка', () => {
     expect(adviseGrind({ stats: stats(620), size: 'medium_fine' }).verdict).toBe('ok')
   })
 })
+
+describe('замер важнее таблицы пресетов', () => {
+  /* Comandante C40, настройка 20 → по неподтверждённой таблице ≈ 500 мкм; цель «medium_fine» 500–750 мкм */
+  const withGrinder = (d50: number, over: Partial<Parameters<typeof adviseGrind>[0]> = {}) =>
+    adviseGrind({ stats: stats(d50), size: 'medium_fine', grinderId: 'comandante-c40', currentSetting: 20, ...over })
+
+  for (const d50 of [900, 1100]) it(`замер ${d50} мкм при таблице ≈ 500 мкм — «сделай мельче», а не «в самый раз»`, () => {
+    const a = withGrinder(d50)
+    expect(a.expectedD50).toBeLessThan(600)
+    expect(a.verdict).toBe('finer')
+    expect(a.offPct).toBeGreaterThan(15)
+  })
+  it('вердикт и отклонение те же, знает приложение кофемолку или нет', () => {
+    for (const d50 of [300, 450, 620, 900, 1300]) {
+      const a = withGrinder(d50), b = adviseGrind({ stats: stats(d50), size: 'medium_fine' })
+      expect([a.verdict, a.offPct]).toEqual([b.verdict, b.offPct])
+    }
+  })
+  it('сильное расхождение с таблицей — заметка «проверь настройку», вердикт всё равно по замеру', () => {
+    const a = withGrinder(1100)
+    expect(a.notes.some(n => n.includes('Замер заметно отличается'))).toBe(true)
+    expect(withGrinder(620).notes.some(n => n.includes('Замер заметно отличается'))).toBe(false)
+  })
+  it('шаг по таблице считается от замера и ограничен ±0,85 уровня', () => {
+    const a = withGrinder(1100)
+    expect(a.basis).toBe('preset')
+    expect(a.suggested!).toBeLessThan(20)
+    expect(a.suggested!).toBeGreaterThan(5)
+  })
+  it('с кривой замер тоже не подменяется её предсказанием', () => {
+    const c = fitCurve([{ setting: 20, d50: 500 }, { setting: 30, d50: 750 }, { setting: 40, d50: 1120 }])!
+    const a = adviseGrind({ stats: stats(1100), size: 'medium_fine', curve: c, currentSetting: 20 })
+    expect(a.verdict).toBe('finer')
+    expect(a.notes.some(n => n.includes('твоей кривой'))).toBe(true)
+  })
+})

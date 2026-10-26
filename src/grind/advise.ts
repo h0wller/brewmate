@@ -13,8 +13,7 @@ export type Verdict = 'ok' | 'finer' | 'coarser'
 export interface Advice {
   verdict: Verdict            // что сделать с помолом
   offPct: number              // насколько D50 вне цели, % (0 если в диапазоне)
-  effectiveD50: number        // итоговый D50 (мкм) с учётом фильтрации и привязки к настройке кофемолки
-  expectedD50?: number        // какой D50 ожидался от самой настройки кофемолки
+  expectedD50?: number        // какой D50 ожидался бы по таблице/кривой для этой настройки: только для сверки, на вердикт не влияет
   target: [number, number]
   aimUm: number               // куда целимся
   suggested?: number          // новая настройка (число на шкале)
@@ -74,28 +73,22 @@ export function adviseGrind(inp: AdviseInput): Advice {
   }
   const aimUm = aimFor(size, taste)
 
-  // Априорная оценка размера частиц из самой настройки кофемолки (если кофемолка и настройка известны)
+  /* Вердикт строится только по измеренному D50. Ожидание по таблице пресетов (она не подтверждена источниками)
+     или по кривой служит лишь для сверки: сильное расхождение — повод проверить настройку и снимок, а не поправка к замеру. */
+  const d50 = stats.d50
   const expectedD50 = expectedUmForSetting(inp.grinderId, inp.currentSetting, inp.redClix, inp.curve)
-
-  /* Если известна кофемолка и её настройка, но на фото есть проблемы (густая горка, комки, мало частиц)
-     или сырой замер отклоняется от физики этой настройки более чем на ±40%,
-     мы удерживаем оценку в физическом коридоре настройки кофемолки (Bayesian prior anchoring). */
-  let effectiveD50 = stats.d50
-  if (expectedD50 !== undefined && !inp.curve) {
-    // Реальная кофемолка на конкретной настройке не может отклоняться от своей шкалы в 5–50 раз:
-    // максимальный физический разброс из-за зерна/обжарки/калибровки нуля составляет ±38%.
-    const clampedPhoto = Math.max(expectedD50 * 0.62, Math.min(expectedD50 * 1.38, stats.d50))
-    const hasPhotoIssues = stats.flags.length > 0
-    const photoWeight = hasPhotoIssues ? 0.35 : 0.65
-    effectiveD50 = Math.round(expectedD50 * (1 - photoWeight) + clampedPhoto * photoWeight)
+  if (expectedD50 !== undefined && (d50 < expectedD50 * 0.6 || d50 > expectedD50 * 1.7)) {
+    notes.push(inp.curve
+      ? 'Замер заметно отличается от твоей кривой для этой настройки: проверь, какая настройка стоит на самом деле, и качество снимка.'
+      : `Замер заметно отличается от ориентира по шкале модели (≈ ${Math.round(expectedD50)} мкм при этой настройке; шкала не подтверждена): проверь, какая настройка стоит на самом деле. Верить стоит замеру.`)
   }
 
   let verdict: Verdict = 'ok'
   let offPct = 0
-  if (effectiveD50 < lo) { verdict = 'coarser'; offPct = Math.round(((lo - effectiveD50) / lo) * 100) }
-  else if (effectiveD50 > hi) { verdict = 'finer'; offPct = Math.round(((effectiveD50 - hi) / hi) * 100) }
-  else if (taste === 'sour' && effectiveD50 > aimUm) { verdict = 'finer'; offPct = Math.round(((effectiveD50 - aimUm) / aimUm) * 100) }
-  else if (taste === 'bitter' && effectiveD50 < aimUm) { verdict = 'coarser'; offPct = Math.round(((aimUm - effectiveD50) / aimUm) * 100) }
+  if (d50 < lo) { verdict = 'coarser'; offPct = Math.round(((lo - d50) / lo) * 100) }
+  else if (d50 > hi) { verdict = 'finer'; offPct = Math.round(((d50 - hi) / hi) * 100) }
+  else if (taste === 'sour' && d50 > aimUm) { verdict = 'finer'; offPct = Math.round(((d50 - aimUm) / aimUm) * 100) }
+  else if (taste === 'bitter' && d50 < aimUm) { verdict = 'coarser'; offPct = Math.round(((aimUm - d50) / aimUm) * 100) }
 
   /* вкус противоречит фото: не крутим помол вслепую */
   if ((verdict === 'finer' && taste === 'bitter') || (verdict === 'coarser' && taste === 'sour')) {
@@ -116,9 +109,8 @@ export function adviseGrind(inp: AdviseInput): Advice {
     } else if (inp.currentSetting !== undefined && inp.grinderId && getGrinderScale(inp.grinderId)) {
       const c0 = coarsenessFromSetting(inp.grinderId, inp.currentSetting, inp.redClix)
       if (c0 !== undefined) {
-        // Ограничиваем разовый шаг коррекции максимум ±0.85 уровня крупности (1–3 клика или 0.3–0.8 деления),
-        // чтобы никогда не предлагать абсурдный прыжок с 5.5 на 1.3 за один раз.
-        const rawShift = coarsenessFromUm(aimUm) - coarsenessFromUm(effectiveD50)
+        // Разовый шаг ограничен ±0.85 уровня крупности: шкала пресетов ориентировочная, большой прыжок по ней не оправдан.
+        const rawShift = coarsenessFromUm(aimUm) - coarsenessFromUm(d50)
         const safeShift = Math.max(-0.85, Math.min(0.85, rawShift))
         const next = presetSettingByCoarseness(inp.grinderId, c0 + safeShift, inp.redClix)
         const v = next ? parseDialValue(next, getGrinderScale(inp.grinderId)) : null
@@ -132,7 +124,7 @@ export function adviseGrind(inp: AdviseInput): Advice {
     if (basis === 'none') notes.push('Сдвинь на 1–2 шага и сфоткай ещё раз: после двух-трёх замеров приложение выучит твою кофемолку и назовёт точную настройку.')
     if (basis === 'preset') notes.push('Число ориентировочное (рассчитано от текущей настройки твоей кофемолки): после смены сфоткай ещё раз.')
   }
-  return { verdict, offPct, effectiveD50, expectedD50, target: [lo, hi], aimUm, suggested, basis, reliable, notes }
+  return { verdict, offPct, expectedD50, target: [lo, hi], aimUm, suggested, basis, reliable, notes }
 }
 
 export const VERDICT_TEXT: Record<Verdict, string> = {

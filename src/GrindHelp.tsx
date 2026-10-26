@@ -3,17 +3,17 @@ import type { PointerEvent } from 'react'
 import type { BrewLog, GrinderProfile } from './types'
 import { NumField } from './NumField'
 import { findGrinder } from './grinders/catalog'
-import { getGrinderScale, parseDialValue, presetSettingForSize } from './grinders/presets'
-import { settingFor as profileSettingFor } from './grinders/profile'
+import { getGrinderScale, parseDialValue } from './grinders/presets'
+import { APPROX, settingFor as profileSettingFor } from './grinders/profile'
+import { settingAfterSizeChange, type SettingSource } from './grind/setting'
 import { tasteForGrind } from './brewlog/taste'
 import { flowSignal } from './grind/flow'
 import { GRIND_SIZES, SIZE_LABEL } from './grinders/size'
 import type { GrindSize } from './grinders/size'
-import { COINS, detectCoinCircle, segment, summarize } from './grind/analyze'
+import { COINS, detectCoinCircle, particleAreaLimits, segment, summarize } from './grind/analyze'
 import type { Circle, GrindStats, Segmentation } from './grind/analyze'
-import { adviseGrind, expectedUmForSetting, VERDICT_TEXT } from './grind/advise'
+import { adviseGrind, VERDICT_TEXT } from './grind/advise'
 import type { Taste } from './grind/advise'
-import { midUm } from './grind/target'
 import { fitCurve } from './grind/curve'
 import { curvePoints, photoProfileFor, savePhotoProfile } from './grind/store'
 import type { GrindCheck, PhotoGrindProfile } from './grind/store'
@@ -26,7 +26,8 @@ import { imageDataToJpeg } from './ai/image'
 const MAX_SIDE = 1600
 type Step = 'setup' | 'mark' | 'result'
 
-/* Достаёт числовую настройку кофемолки для выбранного уровня из профиля или заводского пресета */
+/* Подставляем только то, что пользователь сам ввёл: настройку из записи журнала или свою калибровку.
+   Заводские ориентиры («≈», таблица не подтверждена источниками) как «текущую настройку» не подставляем. */
 function defaultSettingForSize(profile: GrinderProfile, size: GrindSize, logSetting?: string): number | null {
   const scale = getGrinderScale(profile.grinder?.id)
   if (logSetting) {
@@ -34,12 +35,8 @@ function defaultSettingForSize(profile: GrinderProfile, size: GrindSize, logSett
     if (parsed !== null) return parsed
   }
   const manual = profileSettingFor(profile, size)
-  if (manual) {
-    const parsed = parseDialValue(manual, scale)
-    if (parsed !== null) return parsed
-  }
-  const preset = presetSettingForSize(profile.grinder?.id, size, profile.redClix)
-  return preset ? parseDialValue(preset, scale) : null
+  if (manual && !manual.trim().startsWith(APPROX)) return parseDialValue(manual, scale)
+  return null
 }
 
 async function loadToCanvas(file: File, canvas: HTMLCanvasElement): Promise<void> {
@@ -74,6 +71,13 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const [setting, setSetting] = useState<number | null>(() =>
     defaultSettingForSize(profile, initialSize, log?.grind?.setting),
   )
+  const settingSource = useRef<SettingSource>((() => {
+    const scale = getGrinderScale(profile.grinder?.id)
+    if (log?.grind?.setting && parseDialValue(log.grind.setting, scale) !== null) return 'log'
+    const manual = profileSettingFor(profile, initialSize)
+    return manual && !manual.trim().startsWith(APPROX) && parseDialValue(manual, scale) !== null
+      ? 'calibration' : 'none'
+  })())
   const [taste, setTaste] = useState<Taste | undefined>(() => tasteForGrind(log?.taste))
   const flow = useMemo(() => (log ? flowSignal(log) : undefined), [log])
   const [coinId, setCoinId] = useState<string>('rub2')
@@ -104,8 +108,10 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
   const pickSize = (nextSize: GrindSize) => {
     setSize(nextSize)
     setPhotoProfile(photoProfileFor(profile.grinder?.id, nextSize))
-    const nextDefault = defaultSettingForSize(profile, nextSize)
-    if (nextDefault !== null) setSetting(nextDefault)
+    const nextCalibration = defaultSettingForSize(profile, nextSize)
+    const next = settingAfterSizeChange(setting, settingSource.current, nextCalibration)
+    settingSource.current = next.source
+    setSetting(next.setting)
   }
 
   const advice = useMemo(() => stats ? adviseGrind({
@@ -239,21 +245,14 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     if (!(k > 0)) { setErr('Подгони кольцо под монету.'); return }
     setErr(''); setBusy(true)
     setTimeout(() => {
-      // Ожидаемый размер в мкм от настройки кофемолки (или целевого уровня)
-      const expectedUm = expectedUmForSetting(grinderId, setting ?? undefined, profile.redClix, curve) ?? midUm(size)
-      // Максимальная площадь одной реальной крупинки кофе в пикселях (всё, что больше — слипшийся комок/куча)
-      const maxSingleUm = Math.max(1150, Math.min(2200, expectedUm * 2.35))
-      const maxRadiusPx = ((maxSingleUm / 1000) * k) / 2
-      const maxAreaPx = Math.max(25, Math.round(Math.PI * maxRadiusPx * maxRadiusPx))
-      const minRadiusPx = ((95 / 1000) * k) / 2
-      const minAreaPx = Math.max(4, Math.round(Math.PI * minRadiusPx * minRadiusPx))
+      const { minArea, maxArea } = particleAreaLimits(k)
 
       const s = segment(img, {
         exclude: [coinCircle],
-        minArea: minAreaPx,
-        maxArea: maxAreaPx,
+        minArea,
+        maxArea,
       })
-      const st = summarize(s, k, { expectedUm })
+      const st = summarize(s, k)
       setBusy(false)
       if (!st) {
         setErr('Не нашёл отдельных крупинок. Рассыпь щепотку помола свободнее на белом листе.')
@@ -269,10 +268,10 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     const checkId = uid()
     onAddCheck({
       id: checkId, at: now, createdAt: now, updatedAt: now, grinderId, setting, size, taste, logId: log?.id,
-      d10: Math.round(stats.d10), d50: Math.round(advice.effectiveD50), d90: Math.round(stats.d90), n: stats.n,
+      d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
     })
     if (grinderId) {
-      const nextProfile = { grinderId, size, setting: advice.suggested ?? setting, measuredSetting: setting, d50: Math.round(advice.effectiveD50), updatedAt: now, checkId }
+      const nextProfile = { grinderId, size, setting: advice.suggested ?? setting, measuredSetting: setting, d50: Math.round(stats.d50), updatedAt: now, checkId }
       savePhotoProfile(nextProfile)
       setPhotoProfile(nextProfile)
     }
@@ -286,7 +285,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     try {
       const image = imageDataToJpeg(img)
       setOpinion(await askGrindOpinion(loadAIConfig(), image, {
-        size, d10: Math.round(stats.d10), d50: Math.round(advice.effectiveD50), d90: Math.round(stats.d90), n: stats.n,
+        size, d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
         ...(taste ? { taste } : {}),
       }))
     } catch (e) {
@@ -308,7 +307,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
       {step === 'setup' && (
         <>
           <div className="small">
-            Оценка отталкивается от твоей кофемолки и текущей настройки, а по фото проверяет реальные крупинки и отсекает слипшиеся комки.
+            Приложение измеряет частицы на фото и скажет, крупнее или мельче. Размер считается только по снимку; настройка кофемолки нужна, чтобы назвать новое число.
           </div>
 
           <div className="card" onClick={onOpenGrinder}>
@@ -340,9 +339,9 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
 
           <div className="small">Какая настройка сейчас стоит на кофемолке?</div>
           <div className="row">
-            <NumField value={setting} onValue={setSetting} decimal label="Настройка кофемолки" placeholder="напр. 5.5" />
+            <NumField value={setting} onValue={v => { settingSource.current = "user"; setSetting(v) }} decimal label="Настройка кофемолки" placeholder="напр. 5.5" />
             <span className="small" style={{ margin: 0 }}>
-              {grinderScale?.unit ?? 'деление / клики'} (подставлено из {grinderName ?? 'рецепта'})
+              {grinderScale?.unit ?? 'деление / клики'}{setting !== null && log ? ' (из записи журнала)' : ''}
             </span>
           </div>
 
@@ -442,7 +441,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
               </div>
             )}
             <div className="small" style={{ margin: '8px 0 0' }}>
-              Оценка помола ≈ <b>{Math.round(advice.effectiveD50)} мкм</b> (цель для «{SIZE_LABEL[size]}»: {advice.target[0]}–{advice.target[1]} мкм).
+              Оценка помола ≈ <b>{Math.round(stats.d50)} мкм</b> (цель для «{SIZE_LABEL[size]}»: {advice.target[0]}–{advice.target[1]} мкм).
               {advice.expectedD50 !== undefined && (
                 <> Ожидание для настройки {setting}: ≈ {Math.round(advice.expectedD50)} мкм.</>
               )}
