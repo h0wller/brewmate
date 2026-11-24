@@ -502,7 +502,7 @@ async function callProviderChat(fetchFn: typeof fetch, p: Provider, req: ChatReq
     }
     const data = (await res.json())
     const text = data.choices?.[0]?.message?.content
-    if (typeof text !== 'string') throw new ProviderError(502, 'пустой ответ модели')
+    if (typeof text !== 'string' || !text.trim()) throw new ProviderError(502, 'пустой ответ модели')
     return text.trim()
   } catch (e) {
     if (e instanceof ProviderError) throw e
