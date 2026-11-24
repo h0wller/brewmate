@@ -19,7 +19,9 @@ export const genCode = () => {
 }
 
 export async function syncAll(cfg: SyncConfig, local: SyncData): Promise<SyncData> {
-  const sb = createClient(cfg.url, cfg.anonKey)
+  const sb = createClient(cfg.url, cfg.anonKey, {
+    global: { headers: { 'x-sync-code': cfg.code } },
+  })
   const { data, error } = await sb.from('sync').select('data').eq('id', cfg.code).maybeSingle()
   if (error) throw new Error('pull: ' + error.message)
   /* сервер мог хранить старый формат (без updatedAt и deleted) — sanitizeData его допускает */

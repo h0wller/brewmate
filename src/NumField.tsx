@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { fmtNum, parseNum } from './numField'
+import { fmtNum, parseNum } from './numFieldFormat'
 
 /* Числовое поле, которое можно стереть целиком. Текст живёт в поле сам, наружу уходит число или null;
    снаружи значение подтягивается, только если оно изменилось не из этого поля (пересчёт, сброс). */
@@ -22,7 +22,7 @@ export function NumField({
     const want = value ? value : null
     if (cur !== want) setText(fmtNum(value))
     // text намеренно не в зависимостях: иначе поле перетиралось бы при каждом нажатии
-  }, [value])
+  }, [value, text])
 
   return (
     <input

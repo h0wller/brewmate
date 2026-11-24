@@ -129,18 +129,42 @@ export async function recognizePackage(
   return parseProxyResponse(res.status, body)
 }
 
-/* Быстрая проверка ключа/модели текстовым запросом */
+/* Текстовый чат с моделью (для компаньона). Работает только со своим ключом. */
+export async function askChat(cfg: AIConfig, messages: { role: 'user' | 'assistant' | 'system'; content: string }[]): Promise<string> {
+  const res = await fetch(cfg.baseUrl.replace(/\/$/, '') + '/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+    body: JSON.stringify({ model: cfg.model, temperature: 0.5, messages }),
+  })
+  if (!res.ok) throw new Error(`AI ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  const data = await res.json()
+  return data.choices?.[0]?.message?.content ?? ''
+}
+
+/* Компаньон: серверный чат (бесплатный путь, с лимитами). */
+export async function askCompanion(message: string, context?: string): Promise<string> {
+  let res: Response
+  try {
+    res = await fetch('/api/vision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: 'chat', message, context }),
+    })
+  } catch {
+    throw new AIError('network', 'Нет связи с сервером. Проверь интернет и попробуй ещё раз.')
+  }
+  let body: unknown = null
+  try { body = await res.json() } catch { /* parseProxyResponse разберёт по статусу */ }
+  const result = parseProxyResponse(res.status, body) as { reply?: string } | null
+  if (result && typeof result.reply === 'string') return result.reply
+  throw new AIError('bad', 'Компаньон не ответил. Попробуй ещё раз.')
+}
+
 export async function pingAI(cfg: AIConfig): Promise<string> {
   const res = await fetch(cfg.baseUrl.replace(/\/$/, '') + '/chat/completions', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${cfg.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: cfg.model,
-      messages: [{ role: 'user', content: 'Ответь одним словом: кофе' }],
-    }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+    body: JSON.stringify({ model: cfg.model, messages: [{ role: 'user', content: 'Ответь одним словом: кофе' }] }),
   })
   if (!res.ok) throw new Error(`${res.status}: ${(await res.text()).slice(0, 300)}`)
   const d = await res.json()

@@ -9,6 +9,7 @@ import { fromDose, fromWater, ratioOf } from './recipeScale'
 import type { Base } from './recipeScale'
 import { GrinderConverter } from './GrinderConverter'
 import { NumField } from './NumField'
+import { HelpTip } from './companion/HelpTip'
 
 export function RecipeEditor({
   initial,
@@ -116,21 +117,21 @@ export function RecipeEditor({
 
       <div className="numGrid">
         <label>
-          <span>Кофе, г</span>
+          <span>Кофе, г <HelpTip termId="dose" /></span>
           <NumField value={r.doseG} decimal onValue={n => setDose(n ?? 0)} label="Кофе, г" />
         </label>
         <label>
-          <span>Вода, г</span>
+          <span>Вода, г <HelpTip termId="water" /></span>
           <NumField value={r.waterG} decimal onValue={n => setWater(n ?? 0)} label="Вода, г" />
         </label>
         <label>
-          <span>t°, C</span>
+          <span>t°, C <HelpTip termId="temp" /></span>
           <NumField value={r.tempC} onValue={n => set({ tempC: n ?? 0 })} label="Температура, °C" />
         </label>
       </div>
 
       <div className="row">
-        <label>Пропорция 1:</label>
+        <label>Пропорция 1: <HelpTip termId="ratio" /></label>
         <NumField value={ratio === undefined ? undefined : Math.round(ratio * 10) / 10} decimal
           onValue={n => setRatio(n ?? 0)} label="Пропорция воды к кофе" />
         <button className={'chip' + (locked ? ' on' : '')} onClick={toggleLock}>

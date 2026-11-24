@@ -12,7 +12,7 @@ import { SIZE_LABEL, nudgeText } from './grinders/size'
 import { grindFor, smartSettingFor } from './grinders/profile'
 import { findGrinder } from './grinders/catalog'
 import { NumField } from './NumField'
-import { inRange } from './numField'
+import { inRange } from './numFieldFormat'
 import { clickableProps } from './a11y'
 
 const DOSES = [15, 18, 30, 60]

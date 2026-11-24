@@ -47,15 +47,25 @@ export function loadLimits(env: Env): Limits {
 /* ---------- проверка запроса ---------- */
 
 export interface VisionRequest { methodLabel: string; image: string; water?: PromptWater; doseG?: number }
+export interface ChatRequest { message: string; context?: string }
 
 const IMAGE_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/
 const LABEL_RE = /^[\p{L}\p{N} .\-·]{1,30}$/u
 
 export function validateRequest(
   body: unknown, maxImageChars: number,
-): { ok: true; value: VisionRequest } | { ok: false; message: string } {
+): { ok: true; task: 'package'; value: VisionRequest } | { ok: true; task: 'chat'; value: ChatRequest } | { ok: false; message: string } {
   if (!body || typeof body !== 'object') return { ok: false, message: 'ожидается JSON-объект' }
   const b = body as Record<string, unknown>
+  if (b.task === 'chat') {
+    if (typeof b.message !== 'string' || b.message.trim().length === 0 || b.message.length > 500) {
+      return { ok: false, message: 'некорректное сообщение' }
+    }
+    if (b.context !== undefined && (typeof b.context !== 'string' || b.context.length > 500)) {
+      return { ok: false, message: 'некорректный контекст' }
+    }
+    return { ok: true, task: 'chat', value: { message: b.message.trim(), ...(b.context ? { context: String(b.context) } : {}) } }
+  }
   if (b.task !== 'package') return { ok: false, message: 'неизвестная задача' }
   if (typeof b.methodLabel !== 'string' || !LABEL_RE.test(b.methodLabel)) {
     return { ok: false, message: 'некорректный метод заваривания' }
@@ -69,7 +79,7 @@ export function validateRequest(
   }
   if (b.image.length > maxImageChars) return { ok: false, message: 'картинка слишком большая' }
   return {
-    ok: true,
+    ok: true, task: 'package',
     value: {
       methodLabel: b.methodLabel, image: b.image,
       ...(b.water !== undefined ? { water: b.water } : {}),
@@ -239,6 +249,68 @@ export async function runVision(
   return { ok: false, reason: 'busy', retryAfterS: 30 }
 }
 
+
+/* ---------- чат-компаньон ---------- */
+
+const CHAT_SYSTEM = (ctx?: string) =>
+  'Ты — кофейный компаньон BrewMate. Отвечай на русском, кратко и по делу. ' +
+  'Помогаешь с рецептами, экстракцией, помолом, терминами. ' +
+  'Не выдумывай точные клики кофемолок и TDS без рефрактометра. ' +
+  (ctx ? 'Контекст пользователя: ' + ctx + '.' : '')
+
+async function callProviderChat(fetchFn: typeof fetch, p: Provider, req: ChatRequest, timeoutMs: number) {
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), timeoutMs)
+  try {
+    const res = await fetchFn(p.baseUrl + '/chat/completions', {
+      method: 'POST', signal: ctl.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + p.key },
+      body: JSON.stringify({
+        model: p.model, temperature: 0.5,
+        messages: [
+          { role: 'system', content: CHAT_SYSTEM(req.context) },
+          { role: 'user', content: req.message },
+        ],
+      }),
+    })
+    if (!res.ok) {
+      const ra = Number(res.headers.get('retry-after'))
+      throw new ProviderError(res.status, (await res.text()).slice(0, 200), Number.isFinite(ra) && ra > 0 ? ra : undefined)
+    }
+    const data = (await res.json())
+    const text = data.choices?.[0]?.message?.content
+    if (typeof text !== 'string') throw new ProviderError(502, 'пустой ответ модели')
+    return text.trim()
+  } catch (e) {
+    if (e instanceof ProviderError) throw e
+    throw new ProviderError(ctl.signal.aborted ? 504 : 502, (e as Error).message)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export async function runChat(fetchFn: typeof fetch, providers: Provider[], req: ChatRequest, health: Health, now: number, timeoutMs = 25000, log: (m: string) => void = () => {}) {
+  const free = providers.filter(p => (health.until.get(p.id) ?? 0) <= now)
+  if (!free.length) {
+    const soon = Math.min(...providers.map(p => health.until.get(p.id) ?? 0))
+    return { ok: false, reason: 'busy', retryAfterS: Math.max(1, Math.ceil((soon - now) / 1000)) }
+  }
+  const ordered = [...free.filter(p => p.id === health.lastGood), ...free.filter(p => p.id !== health.lastGood)]
+  for (const p of ordered) {
+    try {
+      const reply = await callProviderChat(fetchFn, p, req, timeoutMs)
+      health.lastGood = p.id
+      return { ok: true, result: { reply }, provider: p.id }
+    } catch (e) {
+      const err = e as ProviderError
+      const cd = cooldownS(err)
+      if (cd > 0) health.until.set(p.id, now + cd * 1000)
+      log('chat: ' + p.id + ' ' + err.status + ' ' + String(err.message).slice(0, 120))
+    }
+  }
+  return { ok: false, reason: 'busy', retryAfterS: 30 }
+}
+
 /* ---------- обработчик запроса ---------- */
 
 export interface Deps {
@@ -296,7 +368,13 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   }
   if (!lim.ok) return json(429, { error: 'limit', scope: lim.scope, resetAt: lim.resetAt })
 
-  const out = await runVision(deps.fetch, providers, v.value, deps.health, now, 25_000, deps.log)
+  if (v.task === 'chat') {
+    const out = await runChat(deps.fetch, providers, v.value, deps.health, now, 20_000, deps.log)
+    if (!out.ok) return json(503, { error: 'busy', retryAfterS: out.retryAfterS }, { 'Retry-After': String(out.retryAfterS) })
+    return json(200, { result: out.result })
+  }
+
+  const out = await runVision(deps.fetch, providers, v.value as VisionRequest, deps.health, now, 25_000, deps.log)
   if (!out.ok) return json(503, { error: 'busy', retryAfterS: out.retryAfterS }, { 'Retry-After': String(out.retryAfterS) })
   return json(200, { result: out.result })
 }
