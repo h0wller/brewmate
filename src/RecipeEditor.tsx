@@ -139,7 +139,7 @@ export function RecipeEditor({
         </button>
       </div>
 
-      <div className="small">Помол</div>
+      <div className="small">Помол <HelpTip termId="grind" /></div>
       <div className="lotChips">
         {GRIND_SIZES.map(size => (
           <button key={size} className={'chip' + (grind.size === size ? ' on' : '')}
@@ -147,7 +147,7 @@ export function RecipeEditor({
         ))}
       </div>
       <div className="row">
-        <label>Настройка</label>
+        <label>Настройка <HelpTip termId="calibration" /></label>
         <input value={grind.setting ?? ''}
           onChange={(e) => set({ grind: { ...grind, setting: e.target.value } })}
           placeholder={profile.grinder ? 'на твоей кофемолке, напр. 22 клика' : 'напр. 22 клика'} />
