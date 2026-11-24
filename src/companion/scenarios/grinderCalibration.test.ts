@@ -23,7 +23,7 @@ describe('grinderCalibrationAdvice', () => {
   it('does not invent a medium/3.0 default without a selected recipe', () => {
     const answer = grinderCalibrationAdvice(profile)
 
-    expect(answer).toContain('Откройте рецепт')
+    expect(answer).toContain('сохранённый рецепт')
     expect(answer).not.toContain('средний')
     expect(answer).not.toContain('3.0')
   })
