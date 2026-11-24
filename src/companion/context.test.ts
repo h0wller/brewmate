@@ -18,6 +18,19 @@ describe('buildContext', () => {
     expect(buildContext({ name: 'timer', id: 'r1' }, [r], [], [])).toContain('V60')
     expect(buildContext({ name: 'timer', id: 'nope' }, [r], [], [])).toBe('')
   })
+  it('formats structured grind instead of leaking an object string', () => {
+    const r = recipe({
+      grind: {
+        grinder: { id: 'comandante-c40', label: 'Comandante C40' },
+        setting: '22 клика',
+        size: 'medium_fine',
+      },
+    })
+    const context = buildContext({ name: 'timer', id: 'r1' }, [r], [], [])
+    expect(context).toContain('22 клика')
+    expect(context).toContain('средне-мелкий')
+    expect(context).not.toContain('[object Object]')
+  })
   it('edit с id и без id', () => {
     const r = recipe()
     expect(buildContext({ name: 'edit', id: 'r1' }, [r], [], [])).toContain('250 г воды')
