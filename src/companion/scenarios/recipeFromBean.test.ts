@@ -25,7 +25,7 @@ describe('recipeAdvice', () => {
     const answer = recipeAdvice(bean, 'moccamaster', 18, 'balanced', 'pro')
 
     expect(answer).toContain('Moccamaster')
-    expect(answer).toContain('крупность')
+    expect(answer).toContain('шкалы крупности')
     expect(answer).toContain('не клики')
   })
 })
