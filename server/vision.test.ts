@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, PROVIDER_REGISTRY, runVision, validProviderBaseUrl, validateRequest,
+  checkLimits, handle, loadLimits, loadProviders, memoryStore, newHealth, normalizeVisionResult, PROVIDER_REGISTRY, runChat, runVision, validProviderBaseUrl, validateRequest,
 } from './vision'
 import type { Deps, Env, Provider } from './vision'
 
@@ -82,6 +82,14 @@ describe('validateRequest', () => {
     expect(bad(GOOD, 10)).toBe(false)
     expect(bad(null)).toBe(false)
     expect(bad('строка')).toBe(false)
+  })
+  it('валидирует короткий текстовый чат и очищает пробелы', () => {
+    const v = validateRequest({ task: 'chat', message: '  Как настроить V60?  ', context: 'Рецепт: V60' }, 1000)
+    expect(v.ok).toBe(true)
+    if (v.ok && 'task' in v) expect(v.value).toEqual({ message: 'Как настроить V60?', context: 'Рецепт: V60' })
+    expect(validateRequest({ task: 'chat', message: '   ' }, 1000).ok).toBe(false)
+    expect(validateRequest({ task: 'chat', message: 'x'.repeat(501) }, 1000).ok).toBe(false)
+    expect(validateRequest({ task: 'chat', message: 'hi', context: 'x'.repeat(501) }, 1000).ok).toBe(false)
   })
   it('контекст зерна проверяется и передаётся в запрос AI', () => {
     const v = validateRequest({ ...GOOD, methodLabel: 'Moccamaster', bean: { process: 'honey', roastLevel: 'light', roastDate: '2026-10-01', extra: 'ignore' } }, 1000)
@@ -229,7 +237,52 @@ describe('runVision: перебор провайдеров', () => {
   })
 })
 
+describe('runChat: текстовый ответ компаньона', () => {
+  const providers: Provider[] = [
+    { id: 'gemini', baseUrl: 'https://gem.test', model: 'chat-model', key: 'secret-1' },
+    { id: 'groq', baseUrl: 'https://groq.test', model: 'chat-model', key: 'secret-2' },
+  ]
+  const T = 1_700_000_000_000
+
+  it('sends text and context without an image, then returns trimmed text', async () => {
+    let sent = ''
+    const f = (async (_url: string, init: RequestInit) => {
+      sent = String(init.body)
+      return new Response(JSON.stringify(completion('  Попробуй увеличить время пролива.  ')), { status: 200 })
+    }) as unknown as typeof fetch
+    const out = await runChat(f, providers, { message: 'Как исправить недоэкстракцию?', context: 'Рецепт: V60' }, newHealth(), T)
+    expect(out).toEqual({ ok: true, result: { reply: 'Попробуй увеличить время пролива.' }, provider: 'gemini' })
+    expect(sent).toContain('Как исправить недоэкстракцию?')
+    expect(sent).toContain('Рецепт: V60')
+    expect(sent).not.toContain('image_url')
+  })
+
+  it('treats empty model output as a provider failure and tries the next one', async () => {
+    const { f, calls } = fakeFetch({
+      'gem.test': [() => new Response(JSON.stringify(completion('   ')), { status: 200 })],
+      'groq.test': [() => new Response(JSON.stringify(completion('Ответ второго провайдера')), { status: 200 })],
+    })
+    const out = await runChat(f, providers, { message: 'Вопрос' }, newHealth(), T)
+    expect(out).toMatchObject({ ok: true, result: { reply: 'Ответ второго провайдера' }, provider: 'groq' })
+    expect(calls).toEqual(['gem.test', 'groq.test'])
+  })
+})
+
 describe('handle: HTTP-обработчик', () => {
+  it('chat: 200 with reply, and provider receives only the text question plus trusted context', async () => {
+    let sent = ''
+    const f = (async (_url: string, init: RequestInit) => {
+      sent = String(init.body)
+      return new Response(JSON.stringify(completion('Совет по вкусу и протоку.')), { status: 200 })
+    }) as unknown as typeof fetch
+    const res = await handle(post({ task: 'chat', message: 'Почему кисло?', context: 'Рецепт V60' }), deps(f))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ result: { reply: 'Совет по вкусу и протоку.' } })
+    expect(sent).toContain('Почему кисло?')
+    expect(sent).toContain('Рецепт V60')
+    expect(sent).not.toContain('image_url')
+  })
+
   it('успех: 200 и result; ключи и картинка в ответ не попадают', async () => {
     const { f } = fakeFetch({ 'generativelanguage.googleapis.com': [ok()] })
     const res = await handle(post(GOOD), deps(f))
