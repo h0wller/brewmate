@@ -25,9 +25,12 @@ export function grinderCalibrationAdvice(profile: GrinderProfile, recipe?: Recip
   if (grind.setting && sameGrinder) {
     lines.push(`В рецепте сохранена настройка: ${grind.setting}.`)
   } else if (grind.setting && recipeGrinderId && activeGrinderId && recipeGrinderId !== activeGrinderId) {
-    lines.push(`В рецепте сохранена настройка для ${grind.grinder?.label ?? recipeGrinderId}: ${grind.setting}. Её не переносим на ${profile.grinder.label ?? activeGrinderId}.`)
-    const calibrated = smartSettingFor(profile, size, coarseness)
-    if (calibrated) lines.push(`Ориентир по калибровке ${profile.grinder.label ?? activeGrinderId}: ${calibrated} (проверьте по вкусу и протоку).`)
+    const activeGrinder = profile.grinder
+    if (activeGrinder) {
+      lines.push(`В рецепте сохранена настройка для ${grind.grinder?.label ?? recipeGrinderId}: ${grind.setting}. Её не переносим на ${activeGrinder.label ?? activeGrinder.id}.`)
+      const calibrated = smartSettingFor(profile, size, coarseness)
+      if (calibrated) lines.push(`Ориентир по калибровке ${activeGrinder.label ?? activeGrinder.id}: ${calibrated} (проверьте по вкусу и протоку).`)
+    }
   } else if (profile.grinder) {
     const setting = smartSettingFor(profile, size, coarseness)
     if (setting) lines.push(`Ориентир для ${profile.grinder.label ?? profile.grinder.id}: ${setting}.`)
