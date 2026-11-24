@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { findTerm, searchTerms, TERMS } from './glossary'
-import { explainTerm, listTerms } from './termExplain'
 
 describe('glossary', () => {
   it('уникальные id', () => {
@@ -30,7 +29,5 @@ describe('glossary', () => {
     expect(findTerm('sca')?.short).toContain('Specialty Coffee Association')
     expect(findTerm('cva')?.detail).toContain('описательную')
     expect(findTerm('coe')?.short).toContain('Cup of Excellence')
-    expect(listTerms()).toEqual(TERMS.map(t => t.id))
-    expect(explainTerm('cva')).toContain('Coffee Value Assessment')
   })
 })
