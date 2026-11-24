@@ -31,6 +31,9 @@ import type { Route } from './route'
 import { goBack, navigate, useRoute } from './useRoute'
 import { clickableProps } from './a11y'
 import { VisionBench } from './VisionBench'
+import { SkillLevelPicker } from './companion/SkillLevelPicker'
+import { Companion } from './companion/Companion'
+import { buildContext } from './companion/context'
 
 /* Запись по ссылке не найдена (удалена или ссылка устарела) */
 function NotFound({ to, label }: { to: Route; label: string }) {
@@ -99,7 +102,9 @@ export default function App() {
     switch (route.name) {
       /* ⚙️ Данные и синхронизация — отдельный экран внутри вкладки «Заваривание» */
       case 'settings': return (
-        <SyncSettings
+        <div>
+          <SkillLevelPicker />
+          <SyncSettings
           initial={loadSyncConfig()}
           local={{ recipes, sessions, beans, logs, grindChecks, dialInProfiles: loadDialInProfiles(), photoProfiles: loadPhotoProfiles(), deleted }}
           profile={profile}
@@ -113,6 +118,7 @@ export default function App() {
           onOpenGrinder={() => navigate({ name: 'grinder' })}
           onOpenAI={() => navigate({ name: 'ai' })}
         />
+        </div>
       )
 
       case 'grinder': return (
@@ -294,6 +300,8 @@ export default function App() {
     }
   }
 
+  const companionContext = buildContext(route, recipes, beans, logs)
+
   return (
     <div>
       <StorageWarning
@@ -301,6 +309,10 @@ export default function App() {
         profile={profile}
       />
       {content()}
+      <Companion context={companionContext}
+        bean={route.name === "bean" ? beans.find(x => x.id === route.id) : undefined}
+        log={route.name === "entry" ? logs.find(x => x.id === route.id) : undefined}
+        profile={profile} />
       <nav className="tabs">
         <button className={tab === 'brew' ? 'on' : ''} onClick={() => navigate({ name: 'brew' })}>☕ Заваривание</button>
         <button className={tab === 'bean' ? 'on' : ''} onClick={() => navigate({ name: 'beans' })}>🫘 Зерно</button>

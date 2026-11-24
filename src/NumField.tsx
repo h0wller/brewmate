@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
-import { fmtNum, parseNum } from './numField'
+import { fmtNum, parseNum } from './numFieldFormat'
 
 /* Числовое поле, которое можно стереть целиком. Текст живёт в поле сам, наружу уходит число или null;
    снаружи значение подтягивается, только если оно изменилось не из этого поля (пересчёт, сброс). */
