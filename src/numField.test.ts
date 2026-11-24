@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtNum, inRange, parseNum } from './numField'
+import { fmtNum, inRange, parseNum } from './numFieldFormat'
 
 describe('parseNum', () => {
   it('пустое поле — null, а не 1 или 0 (раньше в поле дозы всегда оставалась цифра)', () => {

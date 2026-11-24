@@ -86,7 +86,7 @@ describe('validateRequest', () => {
   it('контекст зерна проверяется и передаётся в запрос AI', () => {
     const v = validateRequest({ ...GOOD, methodLabel: 'Moccamaster', bean: { process: 'honey', roastLevel: 'light', roastDate: '2026-10-01', extra: 'ignore' } }, 1000)
     expect(v.ok).toBe(true)
-    if (v.ok && v.value.task === 'package') expect(v.value.bean).toEqual({ process: 'honey', roastLevel: 'light', roastDate: '2026-10-01' })
+    if (v.ok && !('task' in v) && v.value.task === 'package') expect(v.value.bean).toEqual({ process: 'honey', roastLevel: 'light', roastDate: '2026-10-01' })
   })
   it('русские названия методов проходят', () => {
     expect(validateRequest({ ...GOOD, methodLabel: 'Френч-пресс' }, 1000).ok).toBe(true)
@@ -327,7 +327,7 @@ describe('validateRequest: задача grind', () => {
   it('принимает замер без methodLabel', () => {
     const v = validateRequest(G, 1000)
     expect(v.ok).toBe(true)
-    if (v.ok) expect(v.value.task).toBe('grind')
+    if (v.ok && !('task' in v)) expect(v.value.task).toBe('grind')
     expect(validateRequest({ ...G, grind: { ...FACTS, taste: 'sour' } }, 1000).ok).toBe(true)
   })
   it('отбрасывает неправдоподобные и подменённые числа', () => {
