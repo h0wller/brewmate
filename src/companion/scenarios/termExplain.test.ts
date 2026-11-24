@@ -10,6 +10,14 @@ describe('termExplain', () => {
   it('для неизвестного — подсказка', () => {
     expect(explainTerm('nope')).toContain('Термин не найден')
   })
+
+  it('lists and explains SCA, CVA and CoE offline', () => {
+    expect(listTerms()).toContain('sca')
+    expect(listTerms()).toContain('cva')
+    expect(listTerms()).toContain('coe')
+    expect(explainTerm('cva')).toContain('Coffee Value Assessment')
+    expect(explainTerm('coe')).toContain('Cup of Excellence')
+  })
   it('lists and explains the extended glossary offline', () => {
     expect(listTerms()).toContain('sca')
     expect(listTerms()).toContain('cva')
