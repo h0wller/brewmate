@@ -13,9 +13,10 @@
 - [ ] Офлайн: DevTools → Network → Offline → сценарии работают, чат показывает понятную ошибку.
 - [ ] Состояния: loading (…думаю), empty («Спроси что-нибудь…»), error, success.
 
-## 2. Ветка и мерж
+## 2. Мерж
 
-- [ ] Ветка `feat/companion` собрана на старой базе (отстаёт от `origin/main` на 280 коммитов). Перенос на main — отдельная задача: конфликты в `App.tsx`, `BeanView.tsx`, `server/vision.ts`, `index.css`.
+- [x] PR #31 влит в `main` (a1795c5); конфликты `server/vision.ts`, `src/App.tsx`, `src/NumField.tsx` решены, build/test/lint зелёные.
+- [ ] Проверить прод после деплоя main: сборка, синхронизация (`x-sync-code`), чат `/api/vision`.
 
 ## 3. Локализация en
 
