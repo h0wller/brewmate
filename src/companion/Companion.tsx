@@ -3,18 +3,22 @@ import { loadAIConfig, askChat, askCompanion } from '../ai/client'
 
 /* Плавающий «компаньон»: чат с AI по контексту. Работает со своим ключом;
    без ключа подсказывает, как его добавить. */
-import type { BeanProfile, BrewLog, GrinderProfile } from '../types'
+import type { BeanProfile, BrewLog, GrinderProfile, Recipe } from '../types'
+import { loadSkillLevel } from './level'
+import type { BeanRecipeSelection } from './types'
 import { recipeAdvice } from './scenarios/recipeFromBean'
 import { extractionAdvice } from './scenarios/extractionAdvice'
 import { explainTerm } from './scenarios/termExplain'
 import { waterAdvice } from './scenarios/waterSettings'
 import { grinderCalibrationAdvice } from './scenarios/grinderCalibration'
 
-export function Companion({ context = '', bean, log, profile }: {
+export function Companion({ context = '', bean, log, profile, recipe, recipeSelection }: {
   context?: string
   bean?: BeanProfile
   log?: BrewLog
   profile?: GrinderProfile
+  recipe?: Recipe
+  recipeSelection?: BeanRecipeSelection
 }) {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
@@ -25,7 +29,18 @@ export function Companion({ context = '', bean, log, profile }: {
   const say = (text: string) => setMsgs(m => [...m, { role: 'assistant', text }])
   const runScenario = (sc: 'recipe' | 'extract' | 'term') => {
     setScenario(sc)
-    if (sc === 'recipe') say(bean ? recipeAdvice(bean) : 'Откройте зерно в профиле — соберу рецепт по нему.')
+    if (sc === 'recipe') {
+      if (!bean) {
+        say('Откройте карточку зерна, выберите метод, дозу и воду — соберу рецепт с учётом этих параметров.')
+        return
+      }
+      const selection = recipeSelection?.beanId === bean.id ? recipeSelection : undefined
+      if (!selection?.method || !selection.dose) {
+        say('В карточке зерна выберите метод заваривания и дозу — тогда рекомендация будет рассчитана под ваш выбор.')
+        return
+      }
+      say(recipeAdvice(bean, selection.method, selection.dose, selection.water ?? 'balanced', loadSkillLevel()))
+    }
     else if (sc === 'extract') say(log ? extractionAdvice(log) : 'Откройте запись в журнале — разберу экстракцию.')
     else say(explainTerm('dose'))
   }
@@ -78,7 +93,7 @@ export function Companion({ context = '', bean, log, profile }: {
               </button>
             ))}
           </div>
-          <div className="companion-msgs">
+          <div className="companion-msgs" role="log" aria-label="Сообщения компаньона" aria-live="polite" aria-relevant="additions text">
             {context && <div className="companion-context">Я вижу: {context}</div>}
             {msgs.length === 0 && <div className="small">Спроси что-нибудь про кофе, рецепт или зерно.</div>}
             {msgs.map((m, i) => (
@@ -88,12 +103,12 @@ export function Companion({ context = '', bean, log, profile }: {
           </div>
           <div className="companion-actions">
             <button className="chip" onClick={() => say(waterAdvice('balanced') + '\n\n' + waterAdvice('soft') + '\n\n' + waterAdvice('hard'))}>Настройка воды</button>
-            <button className="chip" onClick={() => say(grinderCalibrationAdvice(profile ?? { calibration: {} }, 'medium', 3))}>Калибровка кофемолки</button>
+            <button className="chip" onClick={() => say(grinderCalibrationAdvice(profile ?? { calibration: {} }, recipe))}>Калибровка кофемолки</button>
           </div>
           <div className="companion-input">
             <input value={input} onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') send() }}
-              placeholder="Вопрос…" aria-label="Вопрос компаньону" />
+              onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); void send() } }}
+              placeholder="Вопрос…" aria-label="Вопрос компаньону" maxLength={500} />
             <button className="btn" style={{ width: 'auto', marginTop: 0, padding: '8px 12px' }} onClick={send} disabled={busy}>→</button>
           </div>
         </div>
