@@ -20,13 +20,14 @@ import { clickableProps } from './a11y'
 import { loadPhotoProfiles } from './grind/store'
 import { loadDialInProfiles, findDialInProfile } from './beans/dialInProfile'
 import { uid } from './storage'
+import type { BeanRecipeSelection } from './companion/types'
 
 const DOSES = [15, 18, 30, 60]
 const PROCESS_LABEL: Record<string, string> = {
   washed: 'Мытый', natural: 'Натуральный', honey: 'Хани', anaerobic: 'Анаэробная ферментация',
 }
 
-export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI }: {
+export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecipe, onOpenGrinder, onOpenGrindHelp, onOpenAI, onRecommendationChange }: {
   bean: BeanProfile
   profile: GrinderProfile
   history: BrewLog[]
@@ -36,6 +37,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
   onChange: (b: BeanProfile) => void
   onBack: () => void
   onMakeRecipe: (r: Recipe) => void
+  onRecommendationChange?: (selection: BeanRecipeSelection) => void
 }) {
   /* ничего не выбрано заранее: метод, доза и вода — осознанный выбор пользователя */
   const [method, setMethod] = useState<MethodKey | null>(null)
@@ -74,6 +76,20 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
     ? (findGrinder(profile.grinder.id)?.label ?? profile.grinder.label ?? profile.grinder.id)
     : null
   const days = daysSince(bean.roastDate)
+  const chooseMethod = (value: MethodKey) => {
+    const next = method === value ? null : value
+    setMethod(next)
+    onRecommendationChange?.({ beanId: bean.id, method: next, dose, water })
+  }
+  const chooseDose = (value: number | null) => {
+    setDose(value)
+    onRecommendationChange?.({ beanId: bean.id, method, dose: value, water })
+  }
+  const chooseWater = (value: WaterKey) => {
+    const next = water === value ? null : value
+    setWater(next)
+    onRecommendationChange?.({ beanId: bean.id, method, dose, water: next })
+  }
 
   const onPhoto = async (f: File) => {
     setBusy(true); setErr('')
@@ -132,7 +148,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
       <div className="small">1. Метод заваривания</div>
       <div className="lotChips">
         {(Object.keys(METHODS) as MethodKey[]).map(m => (
-          <button key={m} className={'chip' + (method === m ? ' on' : '')} onClick={() => setMethod(method === m ? null : m)}>
+          <button key={m} className={'chip' + (method === m ? ' on' : '')} onClick={() => chooseMethod(m)}>
             {METHODS[m].label}
           </button>
         ))}
@@ -141,12 +157,12 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
       <div className="small">2. Доза кофе</div>
       <div className="doseRow">
         {DOSES.map(d => (
-          <button key={d} className={'chip' + (dose === d ? ' on' : '')} onClick={() => setDose(dose === d ? null : d)}>
+          <button key={d} className={'chip' + (dose === d ? ' on' : '')} onClick={() => chooseDose(dose === d ? null : d)}>
             {d} г
           </button>
         ))}
         <span className="doseOwn">
-          <NumField value={dose} onValue={setDose} decimal label="Своя доза, г" placeholder="своя" />
+          <NumField value={dose} onValue={chooseDose} decimal label="Своя доза, г" placeholder="своя" />
           <span className="unit">г</span>
         </span>
       </div>
@@ -155,7 +171,7 @@ export function BeanView({ bean, profile, history, onChange, onBack, onMakeRecip
       <div className="small">3. Вода (по желанию)</div>
       <div className="lotChips">
         {(Object.keys(WATER_PROFILES) as WaterKey[]).map(w => (
-          <button key={w} className={'chip' + (water === w ? ' on' : '')} onClick={() => setWater(water === w ? null : w)}>
+          <button key={w} className={'chip' + (water === w ? ' on' : '')} onClick={() => chooseWater(w)}>
             {WATER_PROFILES[w].label}
           </button>
         ))}
