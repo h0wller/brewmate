@@ -24,8 +24,9 @@ describe('grinderCalibrationAdvice', () => {
     const answer = grinderCalibrationAdvice(profile)
 
     expect(answer).toContain('сохранённый рецепт')
-    expect(answer).not.toContain('средний')
-    expect(answer).not.toContain('3.0')
+    expect(answer).toContain('Не буду подставлять условное')
+    expect(answer).not.toContain('крупность 3.0')
+    expect(answer).not.toContain('Уровень помола: средний')
   })
 
   it('uses the active recipe grind and its saved setting for the same grinder', () => {
