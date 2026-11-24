@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { explainTerm, listTerms } from './termExplain'
+import { explainTerm, listTerms } from './scenarios/termExplain'
 
 describe('termExplain', () => {
   it('lists every glossary term, including the new coffee assessment terms', () => {
