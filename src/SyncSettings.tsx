@@ -45,11 +45,11 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
       ])
       if (failed.length) {
         setMsg('⚠️ Серверная синхронизация завершена, но локально не сохранены: ' + failed.join(', ') + '. Данные могли сохраниться частично; проверьте резервную копию.')
-        return
+      } else {
+        saveSyncConfig(c)
+        onMerged(merged)
+        setMsg('✅ Готово: данные синхронизированы с сервером и сохранены на устройстве')
       }
-      saveSyncConfig(c)
-      onMerged(merged)
-      setMsg('✅ Готово: данные синхронизированы с сервером и сохранены на устройстве')
     } catch (e) { setMsg('❌ ' + (e as Error).message) }
     setBusy(false)
   }
