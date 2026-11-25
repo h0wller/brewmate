@@ -3,7 +3,7 @@ import { subscribeStorageError } from '../storageError'
 
 afterEach(() => vi.unstubAllGlobals())
 import { activeCalibrationFactor, capChecks, curvePoints, sanitizeChecks, sanitizePhotoProfiles, saveChecks, savePhotoProfiles } from './store'
-import type { GrindCheck } from './store'
+import type { GrindCheck, PhotoGrindProfile } from './store'
 import { SIEVE_REFERENCES } from './target'
 
 const c = (p: Partial<GrindCheck>): GrindCheck => ({
@@ -81,7 +81,7 @@ describe('лимит замеров', () => {
 })
 
 describe('профили помола по фото', () => {
-  const profile = {
+  const profile: PhotoGrindProfile = {
     grinderId: 'comandante-c40', size: 'medium_fine', setting: 18, measuredSetting: 20,
     d50: 620, updatedAt: 100, checkId: 'check-1',
   }
