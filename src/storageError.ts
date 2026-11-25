@@ -29,3 +29,14 @@ export function safeWrite(store: Pick<Storage, 'setItem'>, key: string, value: u
     return false
   }
 }
+
+
+/* Multi-key persistence is best-effort, not atomic. Run every write and return
+   the exact keys that failed so callers never report a complete save. */
+export function runStorageWrites(writes: Array<{ key: string; write: () => boolean }>): string[] {
+  const failed: string[] = []
+  for (const item of writes) {
+    if (!item.write()) failed.push(item.key)
+  }
+  return failed
+}
