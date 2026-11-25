@@ -7,6 +7,10 @@ import { downloadText } from './download'
 import type { GrinderProfile } from './types'
 import { backupFileName, dialInProfilesToRestore, makeBackup, parseBackupJson, profileToRestore } from './backup'
 import { loadDialInProfiles, saveDialInProfiles, sanitizeDialInProfiles } from './beans/dialInProfile'
+import { saveRecipes, saveSessions, saveBeans, saveLogs, saveChecks, saveDeleted } from './storage'
+import { savePhotoProfiles } from './grind/store'
+import { saveProfile } from './grinders/profile'
+import { runStorageWrites } from './storageError'
 
 export function SyncSettings({ initial, local, profile, onProfile, onMerged, onClose, onOpenGrinder, onOpenAI }: {
   initial: SyncConfig | null
@@ -29,9 +33,23 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
     setBusy(true); setMsg('')
     try {
       const merged = await syncAll(c, local)
+      const failed = runStorageWrites([
+        { key: 'recipes', write: () => saveRecipes(merged.recipes) },
+        { key: 'sessions', write: () => saveSessions(merged.sessions) },
+        { key: 'beans', write: () => saveBeans(merged.beans) },
+        { key: 'logs', write: () => saveLogs(merged.logs) },
+        { key: 'grind checks', write: () => saveChecks(merged.grindChecks) },
+        { key: 'deleted markers', write: () => saveDeleted(merged.deleted) },
+        { key: 'dial-in profiles', write: () => saveDialInProfiles(merged.dialInProfiles) },
+        { key: 'photo profiles', write: () => savePhotoProfiles(merged.photoProfiles) },
+      ])
+      if (failed.length) {
+        setMsg('⚠️ Серверная синхронизация завершена, но локально не сохранены: ' + failed.join(', ') + '. Данные могли сохраниться частично; проверьте резервную копию.')
+        return
+      }
       saveSyncConfig(c)
       onMerged(merged)
-      setMsg('✅ Готово: данные слиты и сохранены на сервере')
+      setMsg('✅ Готово: данные синхронизированы с сервером и сохранены на устройстве')
     } catch (e) { setMsg('❌ ' + (e as Error).message) }
     setBusy(false)
   }
@@ -57,9 +75,29 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
         && !incoming.photoProfiles.length && !restored && !rawProfiles.length) {
         throw new Error('в файле нет данных BrewMate')
       }
-      onMerged(mergeData(local, incoming))
+      const merged = mergeData(local, incoming)
+      const dialInProfiles = rawProfiles.length
+        ? dialInProfilesToRestore(raw, loadDialInProfiles())
+        : merged.dialInProfiles
+      const dataToApply = { ...merged, dialInProfiles }
+      const writes = [
+        { key: 'recipes', write: () => saveRecipes(dataToApply.recipes) },
+        { key: 'sessions', write: () => saveSessions(dataToApply.sessions) },
+        { key: 'beans', write: () => saveBeans(dataToApply.beans) },
+        { key: 'logs', write: () => saveLogs(dataToApply.logs) },
+        { key: 'grind checks', write: () => saveChecks(dataToApply.grindChecks) },
+        { key: 'deleted markers', write: () => saveDeleted(dataToApply.deleted) },
+        { key: 'dial-in profiles', write: () => saveDialInProfiles(dataToApply.dialInProfiles) },
+        { key: 'photo profiles', write: () => savePhotoProfiles(dataToApply.photoProfiles) },
+        ...(restored ? [{ key: 'grinder profile', write: () => saveProfile(restored) }] : []),
+      ]
+      const failed = runStorageWrites(writes)
+      if (failed.length) {
+        setMsg('❌ Импорт не применён в интерфейсе. Ошибка локальной записи: ' + failed.join(', ') + '. Часть ключей могла сохраниться; проверьте резервную копию.')
+        return
+      }
+      onMerged(dataToApply)
       if (restored) onProfile(restored)
-      if (rawProfiles.length) saveDialInProfiles(dialInProfilesToRestore(raw, loadDialInProfiles()))
       setMsg(
         `✅ Импортировано: рецептов ${incoming.recipes.length}, зерна ${incoming.beans.length}, ` +
         `каппингов ${incoming.sessions.length}, завариваний ${incoming.logs.length}, ` +
@@ -81,7 +119,15 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
     try {
       if (f.size > 2_000_000) throw new CoffeeJSONError('not_a_document', 'файл больше 2 МБ — это не рецепты')
       const res = parseCoffeeJSON(await f.text())
-      if (res.recipes.length) onMerged(mergeData(local, { ...emptyData(), recipes: res.recipes }))
+      if (res.recipes.length) {
+        const merged = mergeData(local, { ...emptyData(), recipes: res.recipes })
+        const failed = runStorageWrites([{ key: 'recipes', write: () => saveRecipes(merged.recipes) }])
+        if (failed.length) {
+          setMsg('❌ Импорт CoffeeJSON не применён: не удалось сохранить рецепты на устройстве. Проверьте резервную копию.')
+          return
+        }
+        onMerged(merged)
+      }
       const lines = [
         res.recipes.length ? `✅ Импортировано рецептов: ${res.recipes.length}` : '❌ Ни один рецепт не подошёл',
         ...res.skipped.map(x => `пропущен «${x.title}»: ${x.reason}`),
