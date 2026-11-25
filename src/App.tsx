@@ -16,6 +16,7 @@ import { CuppingList } from './CuppingList'
 import { CuppingSessionView } from './CuppingSession'
 import { BeansList } from './BeansList'
 import { BeanView } from './BeanView'
+import type { BeanRecipeSelection } from './companion/types'
 import { SyncSettings } from './SyncSettings'
 import { JournalList } from './JournalList'
 import { LogView } from './LogView'
@@ -56,6 +57,7 @@ export default function App() {
   useEffect(() => saveSessions(sessions), [sessions])
 
   const [beans, setBeans] = useState<BeanProfile[]>(loadBeans)
+  const [beanRecipeSelection, setBeanRecipeSelection] = useState<BeanRecipeSelection | null>(null)
   useEffect(() => saveBeans(beans), [beans])
 
   /* «Моя кофемолка» — настройка этого устройства, в синхронизацию пока не входит */
@@ -209,6 +211,7 @@ export default function App() {
             onOpenAI={() => navigate({ name: 'ai' })}
             onChange={nb => setBeans(bs => bs.map(x => x.id === nb.id ? stamp(nb) : x))}
             onBack={() => navigate({ name: 'beans' })}
+            onRecommendationChange={setBeanRecipeSelection}
             onMakeRecipe={r => {
               setRecipes(rs => [stamp(r), ...rs])
               navigate({ name: 'edit', id: r.id })
@@ -301,6 +304,12 @@ export default function App() {
   }
 
   const companionContext = buildContext(route, recipes, beans, logs)
+  const companionRecipe = route.name === 'timer'
+    ? recipes.find(x => x.id === route.id)
+    : undefined
+  const activeBeanSelection = route.name === 'bean' && beanRecipeSelection?.beanId === route.id
+    ? beanRecipeSelection
+    : undefined
 
   return (
     <div>
@@ -310,6 +319,7 @@ export default function App() {
       />
       {content()}
       <Companion context={companionContext}
+        recipe={companionRecipe} recipeSelection={activeBeanSelection}
         bean={route.name === "bean" ? beans.find(x => x.id === route.id) : undefined}
         log={route.name === "entry" ? logs.find(x => x.id === route.id) : undefined}
         profile={profile} />

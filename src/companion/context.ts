@@ -1,5 +1,6 @@
 import type { BeanProfile, BrewLog, Recipe } from '../types'
 import type { Route } from '../route'
+import { formatGrind } from '../grinders/grind'
 
 /* Сборка короткой строки контекста для компаньона по текущему маршруту.
    Детерминированная, без сети — работает офлайн. */
@@ -12,7 +13,8 @@ export function buildContext(
   if (route.name === 'timer' || route.name === 'edit') {
     const r = route.id ? recipes.find(x => x.id === route.id) : undefined
     if (!r) return ''
-    return `Рецепт: ${r.title}, ${r.doseG} г кофе, ${r.waterG} г воды, ${r.tempC} °C${r.grind ? ', помол ' + r.grind : ''}`
+    const grind = formatGrind(r.grind)
+    return `Рецепт: ${r.title}, ${r.doseG} г кофе, ${r.waterG} г воды, ${r.tempC} °C${grind ? ', помол ' + grind : ''}`
   }
   if (route.name === 'bean') {
     const b = route.id ? beans.find(x => x.id === route.id) : undefined
