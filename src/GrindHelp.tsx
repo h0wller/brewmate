@@ -303,7 +303,10 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     })
     if (grinderId) {
       const nextProfile = { grinderId, size, setting: advice.suggested ?? setting, measuredSetting: setting, d50: Math.round(stats.d50), updatedAt: now, checkId }
-      savePhotoProfile(nextProfile)
+      if (!savePhotoProfile(nextProfile)) {
+        setErr('Не удалось сохранить профиль помола. Измерение осталось несохранённым.')
+        return
+      }
       setPhotoProfile(nextProfile)
     }
     setSaved(true)
