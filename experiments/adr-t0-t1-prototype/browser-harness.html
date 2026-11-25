@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrewMate T1 IndexedDB crash harness</title>
+<body>
+  <h1>BrewMate T1 IndexedDB crash harness</h1>
+  <p>Isolated test database only. It does not load BrewMate application code or user data.</p>
+  <pre id="out">Loading IndexedDB…</pre>
+  <script type="module">
+    const DB = 'brewmate-t1-crash-prototype-v1'
+    const STORES = ['domain', 'bench', 'media', 'relations']
+    const APP_VERSION = Number(new URLSearchParams(location.search).get('appVersion') || 1)
+    const enc = new TextEncoder()
+    const out = document.querySelector('#out')
+
+    function openDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB, 1)
+        request.onupgradeneeded = () => {
+          for (const name of [...STORES, 'journal', 'staging', 'safety']) {
+            if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name)
+          }
+        }
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    }
+    const dbPromise = openDb()
+      function transaction(names, mode, work) {
+        return dbPromise.then(db => new Promise((resolve, reject) => {
+          const tx = db.transaction(names, mode)
+          let value
+        try { value = work(tx) } catch (error) {
+          try { tx.abort() } catch {}
+          reject(error)
+          return
+        }
+        tx.oncomplete = () => resolve(value)
+        tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'))
+        tx.onerror = () => {}
+      }))
+    }
+    function requestValue(request) {
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    }
+    async function read(name, key = 'data') {
+      const db = await dbPromise
+      return requestValue(db.transaction(name, 'readonly').objectStore(name).get(key))
+    }
+    async function allState() {
+      return Object.fromEntries(await Promise.all(STORES.map(async name => [name, await read(name)])))
+    }
+    async function digest(value) {
+      const bytes = enc.encode(JSON.stringify(value))
+      return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+        .map(byte => byte.toString(16).padStart(2, '0')).join('')
+    }
+    async function inventory(state) {
+      state ??= await allState()
+      return Object.fromEntries(await Promise.all(STORES.map(async name => [name, await digest(state[name])])))
+    }
+    const initial = {
+      domain: { recipes: ['before'] },
+      bench: { samples: ['before'] },
+      media: { assets: ['before'] },
+      relations: { links: ['before'] },
+    }
+    const target = {
+      domain: { recipes: ['after'] },
+      bench: { samples: ['after'] },
+      media: { assets: ['after'] },
+      relations: { links: ['after'] },
+    }
+    const allStores = [...STORES, 'journal', 'staging', 'safety']
+    async function seed() {
+      const before = await inventory(initial)
+      await transaction(allStores, 'readwrite', tx => {
+        for (const name of allStores) tx.objectStore(name).clear()
+        for (const name of STORES) tx.objectStore(name).put(structuredClone(initial[name]), 'data')
+      })
+      return { before, after: await inventory(target) }
+    }
+    async function begin({ quota = false, version = APP_VERSION } = {}) {
+      const before = await allState()
+      const beforeHashes = await inventory(before)
+      const staging = { version, target, targetHashes: await inventory(target), beforeHashes }
+      await transaction(['staging', 'safety', 'journal'], 'readwrite', tx => {
+        if (quota) throw new DOMException('Injected quota failure before staging writes', 'QuotaExceededError')
+        tx.objectStore('staging').put(staging, 'active')
+        tx.objectStore('safety').put({ state: before, hashes: beforeHashes }, 'active')
+        tx.objectStore('journal').put({ version, phase: 'staged', completed: [], targetHashes: staging.targetHashes }, 'active')
+      })
+      return status()
+    }
+    async function applyOne(name, { quota = false, abortAfterWrite = false } = {}) {
+      const journal = await read('journal', 'active')
+      const staged = await read('staging', 'active')
+      if (!journal || !staged || journal.phase === 'completed') throw new Error('No applicable restore session')
+      await transaction([name, 'journal'], 'readwrite', tx => {
+        if (quota) throw new DOMException(`Injected quota failure at ${name}`, 'QuotaExceededError')
+        tx.objectStore(name).put(structuredClone(staged.target[name]), 'data')
+        if (abortAfterWrite) {
+          tx.abort()
+          return
+        }
+        tx.objectStore('journal').put({
+          ...journal,
+          phase: 'applying',
+          completed: [...new Set([...journal.completed, name])],
+        }, 'active')
+      })
+      return status()
+    }
+    async function applyAll() {
+      for (const name of STORES) {
+        const journal = await read('journal', 'active')
+        if (!journal.completed.includes(name)) await applyOne(name)
+      }
+      return status()
+    }
+    async function complete() {
+      const journal = await read('journal', 'active')
+      const hashes = await inventory()
+      if (!journal || STORES.some(name => !journal.completed.includes(name)) ||
+          STORES.some(name => hashes[name] !== journal.targetHashes[name])) {
+        throw new Error('Cannot mark completed: incomplete checkpoints or inventory mismatch')
+      }
+      await transaction('journal', 'readwrite', tx => tx.objectStore('journal').put({ ...journal, phase: 'completed' }, 'active'))
+      return status()
+    }
+    async function recover({ appVersion = APP_VERSION } = {}) {
+      const [journal, staged, safety] = await Promise.all([
+        read('journal', 'active'), read('staging', 'active'), read('safety', 'active'),
+      ])
+      if (!safety) {
+        if (journal && !['completed', 'rolled-back'].includes(journal.phase)) {
+          throw new Error('Recovery blocked: safety snapshot missing')
+        }
+        return status('safe-no-operation')
+      }
+      if (JSON.stringify(await inventory(safety.state)) !== JSON.stringify(safety.hashes)) {
+        throw new Error('Recovery blocked: safety snapshot integrity failure')
+      }
+      const invalid = !journal || journal.corrupt === true || !staged ||
+        journal.version !== appVersion || staged.version !== appVersion ||
+        JSON.stringify(journal.targetHashes) !== JSON.stringify(staged.targetHashes)
+      if (invalid) {
+        await transaction([...STORES, 'journal'], 'readwrite', tx => {
+          for (const name of STORES) tx.objectStore(name).put(structuredClone(safety.state[name]), 'data')
+          tx.objectStore('journal').put({ phase: 'rolled-back', reason: !journal ? 'missing-or-corrupt' : 'unsupported-or-invalid' }, 'active')
+        })
+        return status('rolled-back')
+      }
+      await applyAll()
+      return complete()
+    }
+    async function tamperJournal(kind) {
+      if (kind === 'missing') await transaction('journal', 'readwrite', tx => tx.objectStore('journal').delete('active'))
+      else await transaction('journal', 'readwrite', tx => tx.objectStore('journal').put({ corrupt: true }, 'active'))
+    }
+    async function status(note = '') {
+      return {
+        note,
+        state: await allState(),
+        hashes: await inventory(),
+        journal: await read('journal', 'active') ?? null,
+        safetyPresent: Boolean(await read('safety', 'active')),
+        stagingPresent: Boolean(await read('staging', 'active')),
+        estimate: navigator.storage?.estimate ? await navigator.storage.estimate() : null,
+        userAgent: navigator.userAgent,
+      }
+    }
+    async function closeDb() {
+      (await dbPromise).close()
+    }
+    async function removeDb() {
+      await closeDb()
+      await new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(DB)
+        request.onsuccess = () => resolve()
+        request.onerror = () => reject(request.error)
+        request.onblocked = () => reject(new Error('Database deletion blocked by another tab'))
+      })
+    }
+    async function boot() {
+      const [journal, safety] = await Promise.all([read('journal', 'active'), read('safety', 'active')])
+      if (safety && (!journal || !['completed', 'rolled-back'].includes(journal.phase))) {
+        return recover({ appVersion: APP_VERSION })
+      }
+      return status('ready')
+    }
+    window.lab = { seed, begin, applyOne, applyAll, complete, recover, tamperJournal, status, removeDb, stores: STORES, appVersion: APP_VERSION }
+    window.lab.ready = boot()
+    try {
+      out.textContent = JSON.stringify(await window.lab.ready, null, 2)
+    } catch (error) {
+      out.textContent = `${error.name}: ${error.message}`
+    }
+  </script>
+</body>
+</html>

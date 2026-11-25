@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrewMate T1 concurrency protocol harness</title>
+<body>
+  <h1>BrewMate T1 concurrency protocol harness</h1>
+  <p>Isolated IndexedDB test database. No BrewMate runtime or user data is loaded.</p>
+  <pre id="out">Opening isolated database…</pre>
+  <script type="module">
+    const DB = `brewmate-t1-concurrency-prototype-${new URLSearchParams(location.search).get('run') || 'default'}`
+    const STORES = Object.freeze(['domain', 'bench', 'media', 'relations'])
+    const AUX = ['meta', 'staging', 'journal', 'conflicts', 'lease']
+    const ALL = [...STORES, ...AUX]
+    const LOCK = 'brewmate-lab-writer-prototype'
+    const VERSION = 1
+    const INITIAL = {
+      domain: { recipes: ['before'] },
+      bench: { samples: ['before'] },
+      media: { assets: ['before'] },
+      relations: { links: ['before'] },
+    }
+    const TARGET = {
+      domain: { recipes: ['imported'] },
+      bench: { samples: ['imported'] },
+      media: { assets: ['imported'] },
+      relations: { links: ['imported'] },
+    }
+    const out = document.querySelector('#out')
+    const enc = new TextEncoder()
+    const plans = new Map()
+    let gateRelease = null
+
+    function openDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB, 1)
+        request.onupgradeneeded = () => {
+          for (const name of ALL) if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name)
+        }
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+    }
+    const dbPromise = openDb()
+    function txRun(names, mode, setup) {
+      return dbPromise.then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(names, mode)
+        let result
+        try { result = setup(tx) } catch (error) {
+          try { tx.abort() } catch {}
+          reject(error)
+          return
+        }
+        tx.oncomplete = () => resolve(result)
+        tx.onerror = () => {}
+        tx.onabort = () => reject(tx.error ?? new DOMException('Transaction aborted', 'AbortError'))
+      }))
+    }
+    const req = request => new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    async function get(store, key = 'data') {
+      const db = await dbPromise
+      return req(db.transaction(store, 'readonly').objectStore(store).get(key))
+    }
+    async function getState() {
+      return Object.fromEntries(await Promise.all(STORES.map(async store => [store, await get(store)])))
+    }
+    async function hash(value) {
+      const bytes = enc.encode(JSON.stringify(value))
+      return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
+        .map(x => x.toString(16).padStart(2, '0')).join('')
+    }
+    async function inventory(state) {
+      state ??= await getState()
+      return Object.fromEntries(await Promise.all(STORES.map(async store => [store, await hash(state[store])])))
+    }
+    function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
+    async function revision() { return (await get('meta', 'revision')) ?? 0 }
+    function withLock(callback) {
+      if (!navigator.locks?.request) return Promise.reject(new Error('Web Locks unavailable'))
+      return navigator.locks.request(LOCK, { mode: 'exclusive' }, callback)
+    }
+    async function seedIfEmpty() {
+      let result = 'seeded'
+      await txRun(ALL, 'readwrite', tx => {
+        const marker = tx.objectStore('meta').get('seeded')
+        const data = STORES.map(store => tx.objectStore(store).get('data'))
+        const journal = tx.objectStore('journal').get('active')
+        let remaining = data.length + 2
+        const ready = () => {
+          if (--remaining) return
+          if (marker.result) {
+            result = 'already-seeded'
+            return
+          }
+          if (journal.result || data.some(request => request.result !== undefined)) {
+            result = 'refused-unmarked-data'
+            return
+          }
+          for (const store of STORES) tx.objectStore(store).put(structuredClone(INITIAL[store]), 'data')
+          tx.objectStore('meta').put(0, 'revision')
+          tx.objectStore('meta').put(true, 'seeded')
+        }
+        marker.onsuccess = ready
+        journal.onsuccess = ready
+        for (const request of data) request.onsuccess = ready
+      })
+      if (result === 'refused-unmarked-data') throw new Error('Refusing to seed a non-empty unmarked test database')
+      return result
+    }
+    async function plan(target = TARGET) {
+      const targetSnapshot = structuredClone(target)
+      const value = {
+        id: crypto.randomUUID(),
+        baseRevision: await revision(),
+        baseSnapshot: await getState(),
+        target: targetSnapshot,
+      }
+      plans.set(value.id, structuredClone(value))
+      return structuredClone(value)
+    }
+    function saveConflict(tx, localSnapshot, importedSnapshot, baseSnapshot, reason) {
+      const record = {
+        id: crypto.randomUUID(),
+        entityType: 'restore-snapshot',
+        entityId: 'laboratory',
+        state: 'unresolved',
+        reason,
+        detectedAt: new Date().toISOString(),
+        variants: [
+          { variantId: 'local', kind: 'value', snapshot: structuredClone(localSnapshot) },
+          { variantId: 'import', kind: 'value', snapshot: structuredClone(importedSnapshot) },
+        ],
+        baseSnapshot: structuredClone(baseSnapshot),
+        resolution: null,
+      }
+      tx.objectStore('conflicts').put(record, record.id)
+      return record.id
+    }
+    async function stage(planValue) {
+      let outcome
+      const names = [...STORES, 'meta', 'staging', 'journal', 'conflicts']
+      try {
+        await txRun(names, 'readwrite', tx => {
+          const metaReq = tx.objectStore('meta').get('revision')
+          const journalReq = tx.objectStore('journal').get('active')
+          const stateReqs = STORES.map(store => tx.objectStore(store).get('data'))
+          let remaining = stateReqs.length + 2
+          const ready = () => {
+            if (--remaining) return
+            const current = Object.fromEntries(STORES.map((store, i) => [store, stateReqs[i].result]))
+            const currentRevision = metaReq.result ?? 0
+            const existingJournal = journalReq.result
+            if (existingJournal && ['staged', 'applying', 'conflict_pending'].includes(existingJournal.phase)) {
+              outcome = { phase: 'refused', reason: 'restore-already-active' }
+              return
+            }
+            if (currentRevision !== planValue.baseRevision) {
+              const conflictId = saveConflict(tx, current, planValue.target, planValue.baseSnapshot, 'revision-changed-before-stage')
+              outcome = { phase: 'conflict_pending', conflictId }
+              return
+            }
+            tx.objectStore('staging').put(planValue, 'active')
+            tx.objectStore('journal').put({
+              phase: 'staged',
+              baseRevision: currentRevision,
+              expectedRevision: currentRevision,
+              completed: [],
+              target: planValue.target,
+            }, 'active')
+            outcome = { phase: 'staged', baseRevision: currentRevision }
+          }
+          metaReq.onsuccess = ready
+          journalReq.onsuccess = ready
+          for (const request of stateReqs) request.onsuccess = ready
+        })
+      } catch (error) { throw error }
+      return { ...outcome, status: await status() }
+    }
+    async function rollbackToConflict(reason) {
+      const staging = await get('staging', 'active')
+      const journal = await get('journal', 'active')
+      if (!staging || !journal) return { phase: 'refused', reason: 'missing-stage-or-journal' }
+      let conflictIds = []
+      await txRun([...STORES, 'meta', 'journal', 'conflicts'], 'readwrite', tx => {
+        const requests = STORES.map(store => tx.objectStore(store).get('data'))
+        const revisionRequest = tx.objectStore('meta').get('revision')
+        let remaining = requests.length + 1
+        const finish = () => {
+          if (--remaining) return
+          const current = Object.fromEntries(STORES.map((store, i) => [store, requests[i].result]))
+          let changed = false
+          for (const store of STORES) {
+            const wasApplied = journal.completed.includes(store)
+            const currentDiffersFromBase = !equal(current[store], staging.baseSnapshot[store])
+            const currentDiffersFromTarget = !equal(current[store], staging.target[store])
+            if (wasApplied && currentDiffersFromTarget) {
+              conflictIds.push(saveConflict(
+                tx,
+                current,
+                staging.target,
+                staging.baseSnapshot,
+                reason,
+              ))
+              changed = true
+            } else if (!wasApplied && currentDiffersFromBase) {
+              conflictIds.push(saveConflict(tx, current, staging.target, staging.baseSnapshot, reason))
+              changed = true
+            }
+          }
+          // Restore only untouched sections still equal to our applied target.
+          // Never roll back a value which a concurrent writer has changed.
+          for (const store of STORES) {
+            if (journal.completed.includes(store) && equal(current[store], staging.target[store])) {
+              tx.objectStore(store).put(structuredClone(staging.baseSnapshot[store]), 'data')
+            }
+          }
+          tx.objectStore('meta').put((revisionRequest.result ?? 0) + 1, 'revision')
+          tx.objectStore('journal').put({
+            ...journal,
+            phase: 'conflict_pending',
+            conflictIds,
+            reason,
+            rollbackComplete: true,
+            completed: [],
+            concurrentChangeDetected: changed,
+          }, 'active')
+        }
+        revisionRequest.onsuccess = finish
+        for (const request of requests) request.onsuccess = finish
+      })
+      return { phase: 'conflict_pending', conflictIds, status: await status() }
+    }
+    async function applyOne(store) {
+      const staging = await get('staging', 'active')
+      const journal = await get('journal', 'active')
+      if (!staging || !journal || journal.phase === 'conflict_pending') return { phase: 'refused', reason: 'no-active-restore' }
+      let stale = false
+      try {
+        await txRun([store, 'meta', 'journal'], 'readwrite', tx => {
+          const revisionReq = tx.objectStore('meta').get('revision')
+          revisionReq.onsuccess = () => {
+            if ((revisionReq.result ?? 0) !== journal.expectedRevision) {
+              stale = true
+              tx.abort()
+              return
+            }
+            tx.objectStore(store).put(structuredClone(staging.target[store]), 'data')
+            const nextRevision = revisionReq.result + 1
+            tx.objectStore('meta').put(nextRevision, 'revision')
+            tx.objectStore('journal').put({
+              ...journal,
+              phase: 'applying',
+              expectedRevision: nextRevision,
+              completed: [...new Set([...journal.completed, store])],
+            }, 'active')
+          }
+        })
+      } catch (error) {
+        if (!stale) throw error
+      }
+      if (stale) return rollbackToConflict(`revision-changed-before-${store}`)
+      return status()
+    }
+    async function complete() {
+      const staging = await get('staging', 'active')
+      const journal = await get('journal', 'active')
+      let stale = false
+      let mismatch = false
+      try {
+        await txRun([...STORES, 'meta', 'journal'], 'readwrite', tx => {
+          const revReq = tx.objectStore('meta').get('revision')
+          const requests = STORES.map(store => tx.objectStore(store).get('data'))
+          let remaining = requests.length + 1
+          const check = () => {
+            if (--remaining) return
+            const current = Object.fromEntries(STORES.map((store, i) => [store, requests[i].result]))
+            if ((revReq.result ?? 0) !== journal.expectedRevision) {
+              stale = true
+              tx.abort()
+              return
+            }
+            mismatch = STORES.some(store => !equal(current[store], staging.target[store])) ||
+              STORES.some(store => !journal.completed.includes(store))
+            if (mismatch) {
+              tx.abort()
+              return
+            }
+            tx.objectStore('journal').put({ ...journal, phase: 'completed' }, 'active')
+          }
+          revReq.onsuccess = check
+          for (const request of requests) request.onsuccess = check
+        })
+      } catch (error) {
+        if (!stale && !mismatch) throw error
+      }
+      if (stale) return rollbackToConflict('revision-changed-before-complete')
+      if (mismatch) return { phase: 'refused', reason: 'target-or-checkpoint-mismatch', status: await status() }
+      return status()
+    }
+    async function pauseAtGate() {
+      await new Promise(resolve => { gateRelease = resolve })
+    }
+    async function applyAll({ pauseAfterStore } = {}) {
+      for (const store of STORES) {
+        const journal = await get('journal', 'active')
+        if (journal.phase === 'conflict_pending') return status()
+        if (!journal.completed.includes(store)) {
+          const result = await applyOne(store)
+          if (result.phase === 'conflict_pending' || result.phase === 'refused') return result
+          if (store === pauseAfterStore) await pauseAtGate()
+        }
+      }
+      return complete()
+    }
+    async function restoreWithLock(planValue, { pauseAfterStage = false, pauseAfterStore } = {}) {
+      return withLock(async () => {
+        const staged = await stage(planValue)
+        window.lockAcquired = true
+        window.lockStageResult = staged.phase
+        if (pauseAfterStage) await pauseAtGate()
+        if (staged.phase !== 'staged') return staged
+        return applyAll({ pauseAfterStore })
+      })
+    }
+    async function startLockedRestore(planValue, options = {}) {
+      const acceptedPlan = planValue && typeof planValue.id === 'string' ? plans.get(planValue.id) : null
+      if (!acceptedPlan) return 'refused-invalid-plan'
+      window.lockAcquired = false
+      window.lockPromise = restoreWithLock(structuredClone(acceptedPlan), options)
+        .catch(error => ({ phase: 'error', name: error.name, message: error.message }))
+      return 'started'
+    }
+    async function releaseHeldLock() {
+      if (!gateRelease) throw new Error('No held restore gate')
+      gateRelease()
+      gateRelease = null
+    }
+    async function userEdit(store, value, { lock = false } = {}) {
+      const write = () => txRun([store, 'meta'], 'readwrite', tx => {
+        const revReq = tx.objectStore('meta').get('revision')
+        revReq.onsuccess = () => {
+          tx.objectStore(store).put(structuredClone(value), 'data')
+          tx.objectStore('meta').put((revReq.result ?? 0) + 1, 'revision')
+        }
+      })
+      return lock ? withLock(write) : write()
+    }
+    async function lockSnapshot() {
+      return navigator.locks?.query ? navigator.locks.query() : { supported: false }
+    }
+    async function acquireLease(holder, now, ttl) {
+      let result
+      await txRun(['lease', 'meta'], 'readwrite', tx => {
+        const request = tx.objectStore('lease').get('writer')
+        const generationRequest = tx.objectStore('meta').get('lease-generation')
+        let remaining = 2
+        const ready = () => {
+          if (--remaining) return
+          const old = request.result
+          if (old && old.expiresAt > now) {
+            result = { acquired: false, current: old }
+            return
+          }
+          result = { acquired: true, token: Math.max(generationRequest.result ?? 0, old?.token ?? 0) + 1, holder, expiresAt: now + ttl }
+          tx.objectStore('lease').put(result, 'writer')
+          tx.objectStore('meta').put(result.token, 'lease-generation')
+        }
+        request.onsuccess = ready
+        generationRequest.onsuccess = ready
+      })
+      return result
+    }
+    async function writeWithLease(holder, token, store, value) {
+      let stale = false
+      try {
+        await txRun([store, 'meta', 'lease'], 'readwrite', tx => {
+          const request = tx.objectStore('lease').get('writer')
+          request.onsuccess = () => {
+            if (request.result?.holder !== holder || request.result?.token !== token) {
+              stale = true
+              tx.abort()
+              return
+            }
+            const revReq = tx.objectStore('meta').get('revision')
+            revReq.onsuccess = () => {
+              tx.objectStore(store).put(structuredClone(value), 'data')
+              tx.objectStore('meta').put((revReq.result ?? 0) + 1, 'revision')
+            }
+          }
+        })
+      } catch (error) {
+        if (!stale) throw error
+      }
+      if (stale) throw new DOMException('Stale fencing token', 'InvalidStateError')
+      return status()
+    }
+    async function status(note = '') {
+      const db = await dbPromise
+      const [state, rev, journal, staging, conflicts] = await Promise.all([
+        getState(), revision(), get('journal', 'active'), get('staging', 'active'),
+        new Promise((resolve, reject) => {
+          const request = db.transaction('conflicts', 'readonly').objectStore('conflicts').getAll()
+          request.onsuccess = () => resolve(request.result)
+          request.onerror = () => reject(request.error)
+        }),
+      ])
+      return {
+        note,
+        state,
+        hashes: await inventory(state),
+        revision: rev,
+        journal: journal ?? null,
+        staged: Boolean(staging),
+        conflicts: conflicts ?? [],
+        webLocks: Boolean(navigator.locks?.request),
+        userAgent: navigator.userAgent,
+      }
+    }
+    async function boot() {
+      return withLock(async () => {
+        await seedIfEmpty()
+        const journal = await get('journal', 'active')
+        if (journal && ['staged', 'applying'].includes(journal.phase)) {
+          const revisionNow = await revision()
+          const stageValue = await get('staging', 'active')
+          if (!stageValue) return { phase: 'refused', reason: 'missing-stage' }
+          if (revisionNow !== journal.expectedRevision) return rollbackToConflict('revision-drift-on-reopen')
+          return applyAll()
+        }
+        return status('ready')
+      })
+    }
+    window.lab = {
+      plan, startLockedRestore, releaseHeldLock, userEdit, lockSnapshot,
+      acquireLease, writeWithLease, status,
+      stores: [...STORES], lockName: LOCK,
+    }
+    window.lab.ready = boot().then(value => {
+      out.textContent = JSON.stringify(value, null, 2)
+      return value
+    }).catch(error => {
+      out.textContent = `${error.name}: ${error.message}`
+      throw error
+    })
+  </script>
+</body>
+</html>
