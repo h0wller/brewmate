@@ -1,0 +1,29 @@
+{
+  "canonical": [
+    {
+      "value": {"b": 2, "a": 1},
+      "canonical": "{\"a\":1,\"b\":2}",
+      "sha256": "43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777"
+    },
+    {
+      "value": {"10": "ten", "2": "two", "é": "café", "a": "☕"},
+      "canonical": "{\"10\":\"ten\",\"2\":\"two\",\"a\":\"☕\",\"é\":\"café\"}",
+      "sha256": "4e0d016e6a1625c1d8e4bb00bbc446fb8190a9f07677ba94c78d0596217c87e6"
+    },
+    {
+      "value": [-0, 1e-7, 1e+21, "x\n\u0000"],
+      "canonical": "[0,1e-7,1e+21,\"x\\n\\u0000\"]",
+      "sha256": "b526f63d3df9caca3c4f80d19ea9fd654a6394daaa3248a2789bbfc7852a40c9"
+    },
+    {
+      "value": {"at": "2026-11-24T10:00:00.120Z"},
+      "canonical": "{\"at\":\"2026-11-24T10:00:00.120Z\"}",
+      "sha256": "d240cd90d09ca9eb95162103c71cac2184a4faba80377171a7d03cbe22119312"
+    }
+  ],
+  "snapshot": {
+    "value": "0467e306581a260f1764ed5711f97d5f6d4bb5df9e66913c085a150bb9720575",
+    "tombstone": "d91e4e43ccd35987bff78a5dd764a026af0f1df529471ea584ff5fce4c9f7aba"
+  },
+  "bundle": "02484edc33975c1a03a7a42418115aafe7f5f8f7cc41dabfad3f4a00ed71a1a7"
+}
