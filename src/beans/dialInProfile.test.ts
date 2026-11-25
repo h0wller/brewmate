@@ -80,7 +80,7 @@ describe('dial-in profile promotion', () => {
     })
     const errors: { key: string; message: string }[] = []
     const unsubscribe = subscribeStorageError(error => errors.push(error))
-    saveDialInProfile(candidate)
+    expect(saveDialInProfile(candidate)).toBe(false)
     unsubscribe()
     expect(errors).toEqual([{ key: 'brewmate.dial-in-profiles.v1', message: 'QuotaExceededError' }])
   })
