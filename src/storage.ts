@@ -25,28 +25,28 @@ function readList<T extends { id: string }>(key: string): T[] {
 }
 
 /* запись не должна ронять приложение (переполнение квоты, приватный режим), но о сбое узнаёт экран */
-function writeJSON(key: string, value: unknown): void {
-  safeWrite(localStorage, key, value)
+function writeJSON(key: string, value: unknown): boolean {
+  return safeWrite(localStorage, key, value)
 }
 
 /* помол раньше был строкой — старые записи приводим к актуальному виду при чтении */
 export const loadRecipes = (): Recipe[] => readList<Recipe>(RKEY).map(migrateGrind)
-export const saveRecipes = (r: Recipe[]): void => writeJSON(RKEY, r)
+export const saveRecipes = (r: Recipe[]): boolean => writeJSON(RKEY, r)
 
 export const loadSessions = (): CuppingSession[] => readList<CuppingSession>(CKEY)
-export const saveSessions = (s: CuppingSession[]): void => writeJSON(CKEY, s)
+export const saveSessions = (s: CuppingSession[]): boolean => writeJSON(CKEY, s)
 
 export const loadBeans = (): BeanProfile[] => readList<BeanProfile>(BKEY)
-export const saveBeans = (b: BeanProfile[]): void => writeJSON(BKEY, b)
+export const saveBeans = (b: BeanProfile[]): boolean => writeJSON(BKEY, b)
 
 export const loadLogs = (): BrewLog[] => readList<BrewLog>(LKEY).map(migrateGrind)
-export const saveLogs = (l: BrewLog[]): void => writeJSON(LKEY, l)
+export const saveLogs = (l: BrewLog[]): boolean => writeJSON(LKEY, l)
 
 export const loadDeleted = (): Tombstones => {
   try { return sanitizeData({ deleted: JSON.parse(localStorage.getItem(DKEY) ?? 'null') }).deleted }
   catch { return {} }
 }
-export const saveDeleted = (d: Tombstones): void => writeJSON(DKEY, d)
+export const saveDeleted = (d: Tombstones): boolean => writeJSON(DKEY, d)
 
 /* id записей: 20 hex-символов из crypto (getRandomValues работает и без https) */
 export const uid = () =>
