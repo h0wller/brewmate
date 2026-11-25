@@ -87,12 +87,12 @@ export function loadDialInProfiles(): DialInProfile[] {
   }
 }
 
-export function saveDialInProfiles(profiles: DialInProfile[]): void {
-  safeWrite(localStorage, DIAL_IN_PROFILES_KEY, sanitizeDialInProfiles(profiles))
+export function saveDialInProfiles(profiles: DialInProfile[]): boolean {
+  return safeWrite(localStorage, DIAL_IN_PROFILES_KEY, sanitizeDialInProfiles(profiles))
 }
 
-export function saveDialInProfile(profile: DialInProfile): void {
-  saveDialInProfiles(upsertDialInProfile(loadDialInProfiles(), profile))
+export function saveDialInProfile(profile: DialInProfile): boolean {
+  return saveDialInProfiles(upsertDialInProfile(loadDialInProfiles(), profile))
 }
 
 export function findDialInProfile(
