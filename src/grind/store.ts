@@ -80,7 +80,7 @@ export const loadChecks = (): GrindCheck[] => {
   try { return sanitizeChecks(JSON.parse(localStorage.getItem(KEY) ?? '[]')) } catch { return [] }
 }
 
-export const saveChecks = (list: GrindCheck[]): void => { safeWrite(localStorage, KEY, capChecks(list)) }
+export const saveChecks = (list: GrindCheck[]): boolean => safeWrite(localStorage, KEY, capChecks(list))
 
 /* Точки кривой: только замеры этой кофемолки; по одной настройке берём самый свежий замер,
    чтобы старые снимки (другие жернова/износ) не тянули кривую */
@@ -128,13 +128,13 @@ export function loadPhotoProfiles(): PhotoGrindProfile[] {
   catch { return [] }
 }
 
-export function savePhotoProfiles(profiles: PhotoGrindProfile[]): void {
-  safeWrite(localStorage, PHOTO_GRIND_PROFILES_KEY, sanitizePhotoProfiles(profiles))
+export function savePhotoProfiles(profiles: PhotoGrindProfile[]): boolean {
+  return safeWrite(localStorage, PHOTO_GRIND_PROFILES_KEY, sanitizePhotoProfiles(profiles))
 }
 
-export function savePhotoProfile(profile: PhotoGrindProfile): void {
+export function savePhotoProfile(profile: PhotoGrindProfile): boolean {
   const list = loadPhotoProfiles().filter(p => !(p.grinderId === profile.grinderId && p.size === profile.size))
-  savePhotoProfiles([...list, profile].slice(-100))
+  return savePhotoProfiles([...list, profile].slice(-100))
 }
 
 export function photoProfileFor(grinderId: string | undefined, size: GrindSize): PhotoGrindProfile | undefined {

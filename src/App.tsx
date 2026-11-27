@@ -4,8 +4,8 @@ import {
   loadBeans, loadChecks, loadDeleted, loadLogs, loadRecipes, loadSessions,
   saveBeans, saveChecks, saveDeleted, saveLogs, saveRecipes, saveSessions, uid,
 } from './storage'
-import { loadPhotoProfiles, savePhotoProfiles } from './grind/store'
-import { loadDialInProfiles, saveDialInProfiles } from './beans/dialInProfile'
+import { loadPhotoProfiles } from './grind/store'
+import { loadDialInProfiles } from './beans/dialInProfile'
 import { stamp } from './sync/merge'
 import type { GrindCheck } from './grind/store'
 import { StorageWarning } from './StorageWarning'
@@ -50,28 +50,28 @@ export default function App() {
   const tab = tabOf(route)
 
   const [recipes, setRecipes] = useState<Recipe[]>(loadRecipes)
-  useEffect(() => saveRecipes(recipes), [recipes])
+  useEffect(() => { saveRecipes(recipes) }, [recipes])
 
   const [sessions, setSessions] = useState<CuppingSession[]>(loadSessions)
-  useEffect(() => saveSessions(sessions), [sessions])
+  useEffect(() => { saveSessions(sessions) }, [sessions])
 
   const [beans, setBeans] = useState<BeanProfile[]>(loadBeans)
-  useEffect(() => saveBeans(beans), [beans])
+  useEffect(() => { saveBeans(beans) }, [beans])
 
   /* «Моя кофемолка» — настройка этого устройства, в синхронизацию пока не входит */
   const [profile, setProfile] = useState(loadProfile)
-  useEffect(() => saveProfile(profile), [profile])
+  useEffect(() => { saveProfile(profile) }, [profile])
 
   const [logs, setLogs] = useState<BrewLog[]>(loadLogs)
-  useEffect(() => saveLogs(logs), [logs])
+  useEffect(() => { saveLogs(logs) }, [logs])
 
   /* замеры помола: входят в копию и синхронизацию, как журнал */
   const [grindChecks, setGrindChecks] = useState<GrindCheck[]>(loadChecks)
-  useEffect(() => saveChecks(grindChecks), [grindChecks])
+  useEffect(() => { saveChecks(grindChecks) }, [grindChecks])
 
   /* метки удалений: без них синхронизация вернёт удалённое обратно */
   const [deleted, setDeleted] = useState<Tombstones>(loadDeleted)
-  useEffect(() => saveDeleted(deleted), [deleted])
+  useEffect(() => { saveDeleted(deleted) }, [deleted])
   const markDeleted = (id: string) => setDeleted(d => ({ ...d, [id]: Date.now() }))
 
   const upsertRecipe = (r: Recipe) => {
@@ -110,9 +110,10 @@ export default function App() {
           profile={profile}
           onProfile={setProfile}
           onMerged={d => {
+            /* профили помола уже записаны в SyncSettings до onMerged; повторная запись здесь
+               маскировала бы сбой, поэтому только состояние интерфейса */
             setRecipes(d.recipes); setSessions(d.sessions); setBeans(d.beans)
             setLogs(d.logs); setGrindChecks(d.grindChecks); setDeleted(d.deleted)
-            saveDialInProfiles(d.dialInProfiles); savePhotoProfiles(d.photoProfiles)
           }}
           onClose={() => goBack({ name: 'brew' })}
           onOpenGrinder={() => navigate({ name: 'grinder' })}

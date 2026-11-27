@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reportStorageError, safeWrite, subscribeStorageError } from './storageError'
+import { reportStorageError, runStorageWrites, safeWrite, subscribeStorageError } from './storageError'
 import type { StorageErrorInfo } from './storageError'
 
 const full = { setItem() { throw new Error('QuotaExceededError') } }
@@ -39,5 +39,26 @@ describe('сбои записи в хранилище', () => {
   it('несериализуемое значение (цикл) тоже считается сбоем, а не падением', () => {
     const a: Record<string, unknown> = {}; a.self = a
     expect(safeWrite({ setItem() {} }, 'k', a)).toBe(false)
+  })
+})
+
+
+describe('multi-key storage writes', () => {
+  it('reports failed keys and preserves successful writes without claiming atomicity', () => {
+    const visible: string[] = []
+    const failed = runStorageWrites([
+      { key: 'recipes', write: () => { visible.push('recipes'); return true } },
+      { key: 'beans', write: () => false },
+      { key: 'logs', write: () => { visible.push('logs'); return true } },
+    ])
+    expect(visible).toEqual(['recipes', 'logs'])
+    expect(failed).toEqual(['beans'])
+  })
+
+  it('returns no failures when every key is persisted', () => {
+    expect(runStorageWrites([
+      { key: 'recipes', write: () => true },
+      { key: 'beans', write: () => true },
+    ])).toEqual([])
   })
 })

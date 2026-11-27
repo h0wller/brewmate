@@ -40,6 +40,7 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
     : undefined
   const candidateProfile = profileFromConfirmedLog(log, profileAssessment)
   const [profiles, setProfiles] = useState(loadDialInProfiles)
+  const [profileSaveError, setProfileSaveError] = useState('')
   const savedProfile = findDialInProfile(profiles, log.grind?.grinder?.id, log.method, { matchBean: true, beanId: log.beanId, matchRoastDate: true, roastDate: log.beanRoastDate })
   const relatedTrials = history.filter(item => item.trial?.sourceLogId === log.id && item.method === log.method)
 
@@ -159,11 +160,16 @@ export function LogView({ log, sourceLog, history, beans, canRepeat, check, onCh
             {candidateProfile.grinderSetting ? ` · ${candidateProfile.grinderSetting}` : ''}
           </div>
           <button className="btn" onClick={() => {
-            saveDialInProfile(candidateProfile)
+            if (!saveDialInProfile(candidateProfile)) {
+              setProfileSaveError('Не удалось сохранить профиль на этом устройстве. Повторите попытку или скачайте резервную копию.')
+              return
+            }
             setProfiles(loadDialInProfiles())
+            setProfileSaveError('')
           }}>
             {savedProfile?.sourceLogId === log.id ? 'Обновить сохранённый профиль' : 'Сохранить как профиль кофемолка × метод'}
           </button>
+          {profileSaveError && <div className="small" role="alert">{profileSaveError}</div>}
           <div className="small">Это подтверждённый снимок конкретной чашки, а не универсальный рецепт для любого зерна. Он не изменяет ручную калибровку кофемолки и не применяется автоматически к другим партиям.</div>
         </div>
       )}

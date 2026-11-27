@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { activeCalibrationFactor, capChecks, curvePoints, sanitizeChecks, sanitizePhotoProfiles } from './store'
-import type { GrindCheck } from './store'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { subscribeStorageError } from '../storageError'
+
+afterEach(() => vi.unstubAllGlobals())
+import { activeCalibrationFactor, capChecks, curvePoints, sanitizeChecks, sanitizePhotoProfiles, saveChecks, savePhotoProfiles } from './store'
+import type { GrindCheck, PhotoGrindProfile } from './store'
 import { SIEVE_REFERENCES } from './target'
 
 const c = (p: Partial<GrindCheck>): GrindCheck => ({
@@ -78,7 +81,7 @@ describe('лимит замеров', () => {
 })
 
 describe('профили помола по фото', () => {
-  const profile = {
+  const profile: PhotoGrindProfile = {
     grinderId: 'comandante-c40', size: 'medium_fine', setting: 18, measuredSetting: 20,
     d50: 620, updatedAt: 100, checkId: 'check-1',
   }
@@ -87,5 +90,15 @@ describe('профили помола по фото', () => {
   })
   it('отбрасывает профиль с отсутствующей кофемолкой или некорректным D50', () => {
     expect(sanitizePhotoProfiles([{ ...profile, grinderId: '' }, { ...profile, d50: 0 }])).toEqual([])
+  })
+
+  it('возвращает false и уведомляет при ошибке сохранения замеров и фото-профилей', () => {
+    vi.stubGlobal('localStorage', { setItem: () => { throw new Error('QuotaExceededError') } })
+    const errors: string[] = []
+    const unsubscribe = subscribeStorageError(error => errors.push(error.key))
+    expect(saveChecks([c({})])).toBe(false)
+    expect(savePhotoProfiles([profile])).toBe(false)
+    unsubscribe()
+    expect(errors).toEqual(['brewmate.grindchecks.v1', 'brewmate.photo-grind-profiles.v1'])
   })
 })

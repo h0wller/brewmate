@@ -34,7 +34,7 @@ export const loadProfile = (): GrinderProfile => {
   catch { return emptyProfile() }
 }
 
-export const saveProfile = (p: GrinderProfile): void => { safeWrite(localStorage, KEY, p) }
+export const saveProfile = (p: GrinderProfile): boolean => safeWrite(localStorage, KEY, p)
 
 /* Настройка пользователя для уровня крупности (если он её указал вручную) */
 export const settingFor = (p: GrinderProfile, size: GrindSize): string | undefined =>

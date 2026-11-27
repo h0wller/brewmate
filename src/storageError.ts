@@ -29,3 +29,14 @@ export function safeWrite(store: Pick<Storage, 'setItem'>, key: string, value: u
     return false
   }
 }
+
+
+/* Мультиключевая запись — best-effort, не атомарная: выполняем все записи и возвращаем
+   ключи, которые не сохранились, чтобы вызывающий не выдал частичный результат за успех. */
+export function runStorageWrites(writes: Array<{ key: string; write: () => boolean }>): string[] {
+  const failed: string[] = []
+  for (const item of writes) {
+    if (!item.write()) failed.push(item.key)
+  }
+  return failed
+}
