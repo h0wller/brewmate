@@ -11,7 +11,7 @@ export function StorageWarning({ backup, profile }: { backup: () => AppData; pro
   const [failed, setFailed] = useState(false)
   const [hidden, setHidden] = useState(false)
 
-  useEffect(() => subscribeStorageError(() => setFailed(true)), [])
+  useEffect(() => subscribeStorageError(() => { setFailed(true); setHidden(false) }), [])
 
   if (!failed || hidden) return null
   const save = () => {

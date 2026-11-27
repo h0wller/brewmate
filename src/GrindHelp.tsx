@@ -289,7 +289,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
       }
       setRawStats(mode === 'sieve' ? raw : null)
       setCalibrationFactor(mode === 'sieve' ? factor : activeFactor)
-      setSeg(s); setStats(st); setPxPerMm(k); setSieveSaved(false); setStep('result')
+      setSeg(s); setStats(st); setPxPerMm(k); setSieveSaved(false); setErr(''); setStep('result')
     }, 30)
   }
 
@@ -297,18 +297,20 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
     if (!stats || !advice || setting === null) return
     const now = Date.now()
     const checkId = uid()
-    onAddCheck({
-      id: checkId, at: now, createdAt: now, updatedAt: now, source: 'photo', grinderId, setting, size, taste, logId: log?.id,
-      d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
-    })
     if (grinderId) {
       const nextProfile = { grinderId, size, setting: advice.suggested ?? setting, measuredSetting: setting, d50: Math.round(stats.d50), updatedAt: now, checkId }
+      /* профиль пишем до замера: иначе неудачная запись оставляет замер в журнале,
+         а повторное нажатие добавляет дубль с новым id */
       if (!savePhotoProfile(nextProfile)) {
-        setErr('Не удалось сохранить профиль помола. Измерение осталось несохранённым.')
+        setErr('Не удалось сохранить профиль помола. Замер не сохранён — попробуйте ещё раз.')
         return
       }
       setPhotoProfile(nextProfile)
     }
+    onAddCheck({
+      id: checkId, at: now, createdAt: now, updatedAt: now, source: 'photo', grinderId, setting, size, taste, logId: log?.id,
+      d10: Math.round(stats.d10), d50: Math.round(stats.d50), d90: Math.round(stats.d90), n: stats.n,
+    })
     setSaved(true)
   }
 
@@ -599,6 +601,7 @@ export function GrindHelp({ profile, log, checks, onAddCheck, onDeleteCheck, onB
           <button className="btn" style={{ marginTop: 8 }} disabled={setting === null || saved} onClick={save}>
             {saved ? 'Замер сохранён' : 'Сохранить замер'}
           </button>
+          {err && <div className="small" role="alert" style={{ color: '#ff6961' }}>{err}</div>}
           <button className="btn secondary" style={{ marginTop: 8 }} onClick={retake}>Переснять</button>
           {hasSieveCalibration && (
             <div className="card" role="status" style={{ display: 'block', cursor: 'default' }}>
