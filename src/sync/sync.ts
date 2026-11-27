@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { buildPayload, mergeData, sanitizeData } from './merge'
 import type { AppData } from './merge'
+import { safeWrite } from '../storageError'
 
 export interface SyncConfig { url: string; anonKey: string; code: string }
 export type SyncData = AppData
@@ -9,7 +10,8 @@ const KEY = 'brewmate.sync.v1'
 export const loadSyncConfig = (): SyncConfig | null => {
   try { return JSON.parse(localStorage.getItem(KEY) ?? 'null') } catch { return null }
 }
-export const saveSyncConfig = (c: SyncConfig) => localStorage.setItem(KEY, JSON.stringify(c))
+
+export const saveSyncConfig = (c: SyncConfig): boolean => safeWrite(localStorage, KEY, c)
 
 /* BM-XXXX-XXXX-XXXX: 12 символов из 32 → 60 бит случайности (crypto, а не Math.random) */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'

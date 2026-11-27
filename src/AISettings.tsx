@@ -46,7 +46,13 @@ export function AISettings({ initial, onDone, onCancel }: {
       {msg && <div className="small" style={{ wordBreak: 'break-word' }}>{msg}</div>}
 
       <button className="btn" disabled={!c.apiKey || !c.baseUrl || !c.model}
-        onClick={() => { saveAIConfig(c); onDone(c) }}>Сохранить</button>
+        onClick={() => {
+          if (!saveAIConfig(c)) {
+            setMsg('Не удалось сохранить настройки AI на устройстве. Проверьте доступ к хранилищу.')
+            return
+          }
+          onDone(c)
+        }}>Сохранить</button>
       <button className="btn secondary" disabled={!c.apiKey || !c.baseUrl || !c.model || busy} onClick={test}>
         {busy ? 'Проверяю…' : 'Проверить'}
       </button>

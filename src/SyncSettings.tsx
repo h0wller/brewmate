@@ -149,7 +149,12 @@ export function SyncSettings({ initial, local, profile, onProfile, onMerged, onC
         {busy ? 'Синхронизирую…' : '🔄 Синхронизировать'}
       </button>
       <button className="btn secondary" disabled={!ready}
-        onClick={() => { saveSyncConfig(c); setMsg('✅ Настройки сохранены') }}>
+        onClick={() => {
+          if (!saveSyncConfig(c)) {
+            setMsg('❌ Настройки подключения не сохранились на устройстве.')
+            return
+          }
+          setMsg('✅ Настройки сохранены') }}>
         Сохранить настройки
       </button>
 
