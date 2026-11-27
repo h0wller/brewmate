@@ -1,4 +1,5 @@
 /* Уровень знаний пользователя — влияет на плотность интерфейса и подсказки. */
+import { reportStorageError } from '../storageError'
 export type SkillLevel = 'beginner' | 'enthusiast' | 'pro'
 
 const KEY = 'brewmate.skillLevel.v1'
@@ -11,8 +12,14 @@ export const loadSkillLevel = (): SkillLevel => {
   return 'enthusiast'
 }
 
-export const saveSkillLevel = (l: SkillLevel): void => {
-  try { localStorage.setItem(KEY, l) } catch { /* ignore */ }
+export const saveSkillLevel = (l: SkillLevel): boolean => {
+  try {
+    localStorage.setItem(KEY, l)
+    return true
+  } catch (e) {
+    reportStorageError(KEY, e)
+    return false
+  }
 }
 
 export const LEVEL_LABEL: Record<SkillLevel, string> = {

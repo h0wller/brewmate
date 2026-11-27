@@ -3,7 +3,7 @@ import { loadSkillLevel, saveSkillLevel, LEVEL_LABEL, type SkillLevel } from './
 
 export function SkillLevelPicker() {
   const [level, setLevel] = useState(loadSkillLevel())
-  const pick = (l: SkillLevel) => { saveSkillLevel(l); setLevel(l) }
+  const pick = (l: SkillLevel) => { if (saveSkillLevel(l)) setLevel(l) }
   return (
     <div className="card" style={{ marginBottom: 12 }}>
       <div className="grow">

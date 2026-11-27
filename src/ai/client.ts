@@ -1,6 +1,8 @@
 import { buildPackagePrompt } from './prompt'
 import type { PromptOptions } from './prompt'
+import { safeWrite } from '../storageError'
 export { buildPackagePrompt }
+
 
 export interface AIConfig {
   provider: string
@@ -22,7 +24,7 @@ const KEY = 'brewmate.ai.v1'
 export const loadAIConfig = (): AIConfig | null => {
   try { return JSON.parse(localStorage.getItem(KEY) ?? 'null') } catch { return null }
 }
-export const saveAIConfig = (c: AIConfig) => localStorage.setItem(KEY, JSON.stringify(c))
+export const saveAIConfig = (c: AIConfig): boolean => safeWrite(localStorage, KEY, c)
 export const clearAIConfig = () => localStorage.removeItem(KEY)
 
 export function fileToBase64(f: File): Promise<string> {
